@@ -147,6 +147,20 @@ def derive_effective_payload(base_toml_text: str, packages_sh_text: str) -> dict
     )
     payload["excluded"] = sorted(set(base_data.get("excluded", {}).get("packages", [])))
 
+    # Floor assertions: guard against silent under-detection if upstream shell structure shifts
+    min_fedora = 20
+    min_external = 2
+    if len(payload["fedora"]) < min_fedora:
+        raise ValueError(
+            f"Parsing error: parsed {len(payload['fedora'])} base Fedora packages, "
+            f"expected at least {min_fedora}. Upstream base.toml structure may have changed."
+        )
+    if len(payload["external"]) < min_external:
+        raise ValueError(
+            f"Parsing error: parsed {len(payload['external'])} external packages, "
+            f"expected at least {min_external}. Upstream 03-packages.sh structure may have changed."
+        )
+
     return payload
 
 
