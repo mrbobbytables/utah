@@ -108,7 +108,7 @@ mcopy -i "${ESP}" "${WORK}/loader.conf" ::/loader/loader.conf
 
 # Assemble the ISO filesystem. Utah live media supports x86_64 UEFI boot via
 # systemd-boot. BIOS/legacy MBR boot and file-backed/Ventoy loopback booting are
-# unsupported; loopback.cfg and rd.utah.isofile are deliberately omitted.
+# unsupported; loopback configs and file-backed ISO boot parameters are deliberately omitted.
 ISO_ROOT="${WORK}/iso-root"
 mkdir -p "${ISO_ROOT}/EFI/BOOT" "${ISO_ROOT}/LiveOS" "${ISO_ROOT}/images/pxeboot"
 cp "${SYSTEMD_BOOT}" "${ISO_ROOT}/EFI/BOOT/BOOTX64.EFI"
