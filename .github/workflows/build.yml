@@ -2,6 +2,7 @@ name: Build Utah
 
 on:
   pull_request:
+  merge_group:
   push:
     branches: [testing]
   # Nightly scheduling lives in sync-main-to-testing so signatures and E2E
@@ -12,13 +13,14 @@ permissions: {}
 
 concurrency:
   group: utah-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Resolve the complete transaction against the same pinned inputs as the
   # image before starting the flavor matrix, including extension build tools.
   contract:
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -73,10 +75,12 @@ jobs:
   # the three flavors that need it skip roughly half an hour of compiling each.
   kernel_cache:
     needs: contract
-    # Only the OGC and NVIDIA flavors unpack this. While the matrix is main-only
+    # Only non-PR builds (merge queue, testing push, dispatch) perform image builds.
+    # Furthermore, only the OGC and NVIDIA flavors unpack this. While the matrix is main-only
     # it is 45 minutes spent on an image nothing consumes.
-    if: needs.contract.outputs.needs_kernel == 'true'
+    if: github.event_name != 'pull_request' && needs.contract.outputs.needs_kernel == 'true'
     runs-on: ubuntu-26.04
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -97,21 +101,40 @@ jobs:
           REPO_ORGANIZATION: ${{ github.repository_owner }}
         run: |
           set -euo pipefail
+          mkdir -p logs
           ref="ghcr.io/${REPO_ORGANIZATION,,}/utah-kernel-cache:$(./scripts/kernel-cache-tag.sh)"
           if podman pull -q "$ref" >/dev/null 2>&1; then
             echo "Cache hit: $ref is already published"
             exit 0
           fi
           echo "Cache miss: building $ref"
-          podman build --tag "$ref" --file Containerfile.kernel .
-          podman push "$ref"
+          podman build --tag "$ref" --file Containerfile.kernel . 2>&1 | tee logs/kernel-cache-build.log
+          PUSH_OK=false
+          for attempt in 1 2 3; do
+            podman push "$ref" && { PUSH_OK=true; break; }
+            echo "Push attempt ${attempt} failed for ${ref}, retrying in 5s..."
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+          $PUSH_OK || { echo "ERROR: all push attempts failed for ${ref}"; exit 1; }
+      - name: Upload kernel cache build logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: kernel-cache-build-logs
+          path: logs/
+          retention-days: 7
+          if-no-files-found: ignore
 
   # main starts the moment the contract check passes. It never pulls the kernel
   # cache, so there is no reason for it to wait on that job; before this split
   # a cache miss cost main the same twenty minutes it cost nvidia-gaming.
+  #
+  # Secondary-flavor policy: main is the primary flavor required for release
+  # candidate verification. Pull requests skip full container composition,
+  # while merge queues and testing branch pushes build the full release candidates.
   build_main:
     needs: contract
-    if: needs.contract.outputs.main_flavors != '[]'
+    if: github.event_name != 'pull_request' && needs.contract.outputs.main_flavors != '[]'
     uses: projectbluefin/actions/.github/workflows/reusable-build.yml@ce1d0c6bb5baf8bab3a5b226e693c9fd26b3c4a8 # v1
     permissions:
       contents: read
@@ -136,6 +159,7 @@ jobs:
       needs.build_main.result == 'success' &&
       (needs.build_kernel.result == 'success' || needs.build_kernel.result == 'skipped')
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     permissions:
       actions: write
     steps:
@@ -155,9 +179,14 @@ jobs:
   # other. Utah's Justfile ignores base_name when naming images (image names
   # come from the flavor alone), so the only visible effect is the name of the
   # digest artifact, which post-testing-e2e matches by glob.
+  #
+  # Secondary-flavor policy: kernel flavors (nvidia, gaming, nvidia-gaming) are
+  # secondary variants that build on the kernel cache. PRs skip building them.
+  # On merge queues and testing pushes, they build in their own matrix so that
+  # kernel cache construction does not delay the primary flavor.
   build_kernel:
     needs: [contract, kernel_cache]
-    if: ${{ !cancelled() && needs.contract.result == 'success' && needs.kernel_cache.result == 'success' && needs.contract.outputs.kernel_flavors != '[]' }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.contract.result == 'success' && needs.kernel_cache.result == 'success' && needs.contract.outputs.kernel_flavors != '[]' }}
     uses: projectbluefin/actions/.github/workflows/reusable-build.yml@ce1d0c6bb5baf8bab3a5b226e693c9fd26b3c4a8 # v1
     permissions:
       contents: read
