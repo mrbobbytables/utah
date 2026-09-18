@@ -130,12 +130,14 @@ apps = [
 
 [services]
 enabled = [
+  "bluefin-stats-refresh.timer",
   "bootc-unified-storage.service",
   "brew-setup.service",
   "dconf-update.service",
   "flatpak-nuke-fedora.service",
   "flatpak-preinstall.service",
   "gdm.service",
+  "input-remapper.service",
   "ublue-system-setup.service",
   "uupd.timer",
 ]
