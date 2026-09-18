@@ -145,6 +145,14 @@ class PackageResolutionTests(unittest.TestCase):
             (dirpath / "b.repo").write_text("[high-prio]\n# utah-install: true\npriority  =  5\n")
             self.assertEqual(installer.install_repos(dirpath), ("high-prio", "low-prio"))
 
+    def test_install_repos_marker_above_or_below_header(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dirpath = Path(tmp)
+            (dirpath / "a.repo").write_text("# utah-install: true\n[above-header]\npriority=10\n")
+            (dirpath / "b.repo").write_text("[below-header]\n# utah-install: true\npriority=20\n")
+            (dirpath / "multi.repo").write_text("[unmarked]\npriority=1\n# utah-install: true\n[second-marked]\npriority=5\n")
+            self.assertEqual(installer.install_repos(dirpath), ("second-marked", "above-header", "below-header"))
+
     def test_install_repos_empty_or_no_marked_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             dirpath = Path(tmp)

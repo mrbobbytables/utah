@@ -85,7 +85,8 @@ comment, `Containerfile` ~L94; repo files copied at `Containerfile` L40).
 
 The install-source identity is single-sourced in `packages/*.repo`. Each repository
 participating in the package install transaction carries a `# utah-install: true`
-annotation (in `packages/utah-packages.repo` and `packages/hummingbird.repo`).
+annotation (either directly preceding or within the `[section]` header in
+`packages/utah-packages.repo` and `packages/hummingbird.repo`).
 `scripts/install-packages.py` derives the `--enablerepo` set from these annotations
 ordered by priority (ascending), so rebuilds in `utah-packages` (`priority=1`)
 precede base Hummingbird packages (`priority=10`). Repositories without this marker

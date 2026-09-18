@@ -42,6 +42,7 @@ def install_repos(repo_dir: Path | None = None) -> tuple[str, ...]:
         for repo_file in sorted(directory.glob("*.repo")):
             section_name: str | None = None
             marked = False
+            pending_marker = False
             priority = 99
             for line in repo_file.read_text().splitlines():
                 line = line.strip()
@@ -49,19 +50,25 @@ def install_repos(repo_dir: Path | None = None) -> tuple[str, ...]:
                     if section_name and marked:
                         repos.append((priority, section_name))
                     section_name = line[1:-1]
-                    marked = False
+                    marked = pending_marker
+                    pending_marker = False
                     priority = 99
                 elif line.startswith("#"):
                     comment = line.lstrip("#").strip()
                     if comment == "utah-install: true":
-                        marked = True
+                        pending_marker = True
                 elif "=" in line:
+                    if pending_marker:
+                        marked = True
+                        pending_marker = False
                     key, val = line.split("=", 1)
                     if key.strip() == "priority":
                         try:
                             priority = int(val.strip())
                         except ValueError:
                             pass
+            if pending_marker:
+                marked = True
             if section_name and marked:
                 repos.append((priority, section_name))
 
