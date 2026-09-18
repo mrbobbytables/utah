@@ -13,8 +13,8 @@ dependencies: []
 tags: [qemu, bootc, iso, vm, testing]
 description: >-
   Local validation loop: build-ghcr, bootc install to-disk, QEMU/noVNC boot,
-  live ISO boot paths, and Secure Boot strategy. Use when validating changes
-  end-to-end or debugging boot, GDM, or live-session failures.
+  live ISO boot paths, Secure Boot strategy, and firmware/bootloader compatibility.
+  Use when validating changes end-to-end or debugging boot, GDM, or live-session failures.
 metadata:
   type: runbook
 ---
@@ -188,6 +188,18 @@ Production live boot entries configure:
   modules with an enrolled MOK key (e.g. via the kernel's `sign-file` utility)
   is planned for future release pipelines, but currently module signing is not
   implemented in-tree and Secure Boot must remain disabled.
+## Firmware and bootloader compatibility (UEFI vs. BIOS)
+
+- **Fresh installs (`bootc install to-disk` / live ISO) are UEFI-only**:
+  Hummingbird base installs only `grub2-efi-x64`, `shim-x64`, and `efibootmgr`
+  with EFI bootupd metadata (`EFI.json`). Utah adds no `grub2-pc` or BIOS
+  payload; fresh disk installs on legacy BIOS cannot write an MBR bootloader.
+- **Switching existing installs (`bootc switch`) works on legacy BIOS**:
+  Switching a legacy-BIOS system (e.g. ThinkPad X230 with GPT/MBR and BIOS GRUB)
+  from Bluefin to Utah succeeds: the existing bootloader loads the new kernel,
+  and `bootc rollback` works cleanly. `bootupctl` reports `Boot method: BIOS`.
+- **Resolution path**: Fresh BIOS installs remain unsupported until the base
+  or contract ships `grub2-pc` and a BIOS payload (tracked in #102, links #22).
 
 ## Verification
 
