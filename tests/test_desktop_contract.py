@@ -258,5 +258,37 @@ class GnomeExtensionTests(unittest.TestCase):
             )
 
 
+class ServiceMaskParityTests(unittest.TestCase):
+    def test_bootc_fetch_apply_updates_masked_and_disabled(self):
+        preset = (ROOT / "system_files/shared/usr/lib/systemd/system-preset/85-utah-desktop.preset").read_text()
+        self.assertIn("disable bootc-fetch-apply-updates.timer", preset)
+        self.assertIn("disable bootc-fetch-apply-updates.service", preset)
+
+        config_services = (ROOT / "scripts/configure-services.sh").read_text()
+        self.assertIn("systemctl mask bootc-fetch-apply-updates.timer bootc-fetch-apply-updates.service", config_services)
+        self.assertIn("ln -sf /dev/null /usr/lib/systemd/system/bootc-fetch-apply-updates.timer", config_services)
+        self.assertIn("ln -sf /dev/null /usr/lib/systemd/system/bootc-fetch-apply-updates.service", config_services)
+        self.assertIn("bootc-fetch-apply-updates", config_services)
+
+    def test_cross_vendor_merge_and_switch_mask_documented(self):
+        readme = (ROOT / "README.md").read_text()
+        desktop_skill = (ROOT / "docs/skills/desktop-contract.md").read_text()
+        testing_skill = (ROOT / "docs/skills/local-testing.md").read_text()
+
+        self.assertIn("bootc-fetch-apply-updates", readme)
+        self.assertIn("3-way", readme)
+        self.assertIn("rollback", readme)
+        self.assertIn("systemctl is-enabled bootc-fetch-apply-updates.timer", readme)
+
+        self.assertIn("bootc-fetch-apply-updates.timer", desktop_skill)
+        self.assertIn("bootc-fetch-apply-updates.service", desktop_skill)
+        self.assertIn("uupd.timer", desktop_skill)
+
+        self.assertIn("bootc-fetch-apply-updates.timer", testing_skill)
+        self.assertIn("uupd.timer", testing_skill)
+        self.assertIn("rollback", testing_skill)
+
+
+
 if __name__ == "__main__":
     unittest.main()
