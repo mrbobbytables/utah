@@ -169,7 +169,7 @@ class PackageResolutionTests(unittest.TestCase):
             overlay = dirpath / "utah.toml"
             base.write_text('[fedora]\npackages=["base"]\n')
             overlay.write_text('[gnome]\npackages=[]\n')
-            
+
             # Missing hummingbird
             repos_dir = dirpath / "repos"
             repos_dir.mkdir()
@@ -250,6 +250,14 @@ class ParityContractTests(unittest.TestCase):
             r'\[\[\s*!\s*"\$ref"\s*=~\s*\^\[0-9a-f\]\{40\}\$\s*\]\]',
             "Justfile check-parity recipe must validate the SHA format before fetching",
         )
+
+    def test_services_section_includes_avahi_and_preset_enables_it(self):
+        services = installer.section(self.OVERLAY, "services")
+        self.assertIn("avahi", services)
+        preset = (ROOT / "system_files/shared/usr/lib/systemd/system-preset/85-utah-desktop.preset").read_text()
+        self.assertIn("enable avahi-daemon.service", preset)
+        configure_services = (ROOT / "scripts/configure-services.sh").read_text()
+        self.assertIn("enable_unit avahi-daemon.service", configure_services)
 
 
 class ImageSizeTests(unittest.TestCase):
