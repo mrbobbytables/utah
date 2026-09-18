@@ -47,12 +47,32 @@ opaque `exit status 71` from the image build (comment,
 `.github/workflows/build.yml`). It runs three checks:
 
 - `just check` -- manifest validation, including the workflow output check
-  (`scripts/check_workflow_outputs.py`), the syntax gate
-  (`scripts/check-script-syntax.py`), and the ban on flavor literals in
-  workflows.
+  (`scripts/check_workflow_outputs.py`), the download integrity guard
+  (`scripts/check-download-integrity.py`), the syntax gate
+  (`scripts/check-script-syntax.py`), host-side unit tests (`just test`),
+  and the ban on flavor literals in workflows.
 - `just check-parity` -- `packages/bluefin.toml` against Bluefin's upstream.
 - `just check-repos` -- the complete installation transaction against the
   digest-pinned base and package repository, including extension build tools.
+
+### CI guard scripts and test coverage
+
+The fast gate relies on pure-verdict Python scripts under `scripts/` to halt
+the build before expensive compilation or container builds run:
+
+- `scripts/check-download-integrity.py`: enforces that composition recipes do
+  not resolve mutable `releases/latest` URLs, and that any executable download
+  (`.run`, `.tar.gz`, `.tgz`, `.rpm`, `.flatpak`, `.service`, `.timer`) via `curl`
+  or `wget` is verified against a digest (`sha256sum`, `sha512sum`, `--check`) or
+  signature (`cosign`, `gpg --verify`). Clearance is per-file. Flathub descriptor
+  downloads (`flathub.flatpakrepo`, `appstream`) and comment lines are exempt.
+  Exercised by black-box tests in `tests/test_check_download_integrity.py`.
+- `scripts/check_workflow_outputs.py`: parses workflows under `.github/workflows/`
+  and ensures that every job output referencing `steps.<id>.outputs` points to a
+  step id defined in that same job. Step ids never leak across jobs, non-step
+  expressions (`inputs.*`, `github.*`, `env.*`) are accepted, and all dangling
+  references across all workflow files are reported.
+  Exercised by black-box tests in `tests/test_check_workflow_outputs.py`.
 
 The same job resolves the flavor set and splits it in two by what each
 flavor builds on -- `main` on the pristine Hummingbird base, the rest on the
