@@ -12,6 +12,7 @@ enable systemd-resolved.service
 enable bootc-unified-storage.service
 enable dconf-update.service
 enable input-remapper.service
+enable bluefin-stats-refresh.timer
 enable ModemManager.service
 # Printing on demand, as Fedora's preset enables it for Bluefin.
 enable cups.socket

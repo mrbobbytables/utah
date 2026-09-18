@@ -130,6 +130,7 @@ apps = [
 
 [services]
 enabled = [
+  "bluefin-stats-refresh.timer",
   "bluetooth.service",
   "bootc-unified-storage.service",
   "brew-setup.service",

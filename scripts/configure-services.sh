@@ -83,6 +83,7 @@ enable_unit ModemManager.service
 # 99-default-disable would leave it off.
 enable_unit cups.socket
 enable_unit cups.path
+enable_unit bluefin-stats-refresh.timer
 
 # Bluefin's Brewfile and Bazaar preinstall hook need the Flathub remote before
 # first boot. Keep this as a .flatpakrepo descriptor so the remote is available
