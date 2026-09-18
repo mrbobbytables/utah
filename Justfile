@@ -110,11 +110,16 @@ check:
     bash scripts/check-skill-frontmatter.sh
     bash scripts/check-skill-index.sh
     python3 scripts/generate_skill_index.py --check
-    # No workflow may carry its own copy of the flavor list. That drift is what
-    # config/flavors.json exists to stop: narrowing the build matrix while
+    # Neither workflows nor the Justfile may carry their own copy of the flavor
+    # list or flavored image names. That drift is what config/flavors.json and
+    # scripts/flavors.py exist to stop: narrowing the build matrix while
     # promote and release still name images nothing produces fails late.
-    if grep -rn 'utah-nvidia\|utah-gaming' .github/workflows/; then
+    if grep -rnE 'utah-(nvidia|gaming)' .github/workflows/; then
       echo 'no workflow may name a flavored image; read it from config/flavors.json' >&2
+      exit 1
+    fi
+    if grep -nE '(utah|\{\{ image \}\})-(nvidia|gaming)' Justfile; then
+      echo 'no recipe may name a flavored image; use flavors.py image' >&2
       exit 1
     fi
 
@@ -154,15 +159,7 @@ check-parity:
     fi
 
 image_name base_name stream flavor:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    case "{{ flavor }}" in
-      main) echo "{{ image }}" ;;
-      nvidia) echo "{{ image }}-nvidia" ;;
-      gaming) echo "{{ image }}-gaming" ;;
-      nvidia-gaming) echo "{{ image }}-nvidia-gaming" ;;
-      *) echo "unknown Utah image flavor: {{ flavor }}" >&2; exit 2 ;;
-    esac
+    @python3 scripts/flavors.py image "{{ flavor }}"
 
 generate-default-tag stream build_number:
     @echo "{{ stream }}"
@@ -190,13 +187,7 @@ build-ghcr base_name stream flavor kernel_pin="":
     #!/usr/bin/env bash
     set -euo pipefail
     version="{{ stream }}-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
-    case "{{ flavor }}" in
-      main) image_name="{{ image }}" ;;
-      nvidia) image_name="{{ image }}-nvidia" ;;
-      gaming) image_name="{{ image }}-gaming" ;;
-      nvidia-gaming) image_name="{{ image }}-nvidia-gaming" ;;
-      *) echo "unknown Utah image flavor: {{ flavor }}" >&2; exit 2 ;;
-    esac
+    image_name="$(python3 scripts/flavors.py image '{{ flavor }}')"
     # The kernel cache image and the layer cache below are both published
     # private by default, and the reusable build workflow only logs in to GHCR
     # for non-PR events -- so pulling either would 401 on exactly the runs that
@@ -302,7 +293,7 @@ tag-images image_name default_tag alias_tags:
 gen-sbom base_name stream flavor syft_cmd:
     #!/usr/bin/env bash
     set -euo pipefail
-    image_name="$(just image_name '{{ base_name }}' '{{ stream }}' '{{ flavor }}')"
+    image_name="$(python3 scripts/flavors.py image '{{ flavor }}')"
     mkdir -p "sbom_out/$image_name"
     "{{ syft_cmd }}" "localhost/$image_name:{{ stream }}" -o json >"sbom_out/$image_name/sbom.json"
 
@@ -443,7 +434,7 @@ boot-vm:
 secureboot base_name default_tag flavor:
     #!/usr/bin/env bash
     set -euo pipefail
-    image_name="$(just image_name '{{ base_name }}' '{{ default_tag }}' '{{ flavor }}')"
+    image_name="$(python3 scripts/flavors.py image '{{ flavor }}')"
     podman run --rm --entrypoint /bin/sh "localhost/$image_name:{{ default_tag }}" -c 'test -e /usr/lib/modules || test -e /boot'
 
 # Regenerate the status page's package data from the manifests. Run this after
