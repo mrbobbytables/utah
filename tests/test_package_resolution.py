@@ -138,12 +138,36 @@ class PackageResolutionTests(unittest.TestCase):
             (dirpath / "c.repo").write_text("[unmarked]\npriority=1\n")
             self.assertEqual(installer.install_repos(dirpath), ("high-prio", "low-prio"))
 
+    def test_install_repos_priority_with_spaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dirpath = Path(tmp)
+            (dirpath / "a.repo").write_text("[low-prio]\n# utah-install: true\npriority = 50\n")
+            (dirpath / "b.repo").write_text("[high-prio]\n# utah-install: true\npriority  =  5\n")
+            self.assertEqual(installer.install_repos(dirpath), ("high-prio", "low-prio"))
+
     def test_install_repos_empty_or_no_marked_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             dirpath = Path(tmp)
             (dirpath / "unmarked.repo").write_text("[unmarked]\nname=unmarked\n")
             with self.assertRaises(ValueError):
                 installer.install_repos(dirpath)
+
+    def test_check_requires_hummingbird_and_utah_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dirpath = Path(tmp)
+            base = dirpath / "bluefin.toml"
+            overlay = dirpath / "utah.toml"
+            base.write_text('[fedora]\npackages=["base"]\n')
+            overlay.write_text('[gnome]\npackages=[]\n')
+            
+            # Missing hummingbird
+            repos_dir = dirpath / "repos"
+            repos_dir.mkdir()
+            (repos_dir / "u.repo").write_text("[utah-packages]\n# utah-install: true\n")
+            with patch("sys.argv", ["install", "--check", "--repos-dir", str(repos_dir), str(base), str(overlay)]):
+                with self.assertRaises(ValueError) as ctx:
+                    installer.main()
+                self.assertIn("public-hummingbird-x86_64-rpms", str(ctx.exception))
 
 
 class ParityContractTests(unittest.TestCase):

@@ -55,12 +55,13 @@ def install_repos(repo_dir: Path | None = None) -> tuple[str, ...]:
                     comment = line.lstrip("#").strip()
                     if comment == "utah-install: true":
                         marked = True
-                elif line.startswith("priority="):
-                    val = line.split("=", 1)[1].strip()
-                    try:
-                        priority = int(val)
-                    except ValueError:
-                        pass
+                elif "=" in line:
+                    key, val = line.split("=", 1)
+                    if key.strip() == "priority":
+                        try:
+                            priority = int(val.strip())
+                        except ValueError:
+                            pass
             if section_name and marked:
                 repos.append((priority, section_name))
 
@@ -81,7 +82,10 @@ def install_repos(repo_dir: Path | None = None) -> tuple[str, ...]:
 # The factory is first so its Hummingbird-targeted rebuilds win over an
 # equally-versioned Hummingbird package. The repository is copied from the
 # digest-pinned OCI package image by Containerfile.
-REPOS = install_repos()
+def __getattr__(name: str):
+    if name == "REPOS":
+        return install_repos()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def section(path: Path, name: str) -> list[str]:
@@ -163,7 +167,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     overlay = args.overlay or args.manifest.with_name("utah.toml")
-    repos = install_repos(args.repos_dir) if args.repos_dir else REPOS
+    repos = install_repos(args.repos_dir)
 
     if args.check:
         # No rpmdb to consult off-image, so validate the manifests only.
@@ -176,6 +180,8 @@ def main() -> int:
             raise ValueError(f"[unavailable] packages still in install set: {overlap}")
         if "utah-packages" not in repos:
             raise ValueError("utah-packages repository not found in install repositories")
+        if "public-hummingbird-x86_64-rpms" not in repos:
+            raise ValueError("public-hummingbird-x86_64-rpms repository not found in install repositories")
         print(f"validated {len(packages)} Bluefin parity packages")
         print(f"documented as unavailable: {len(unavailable)}")
         print(f"install repositories: {', '.join(repos)}")
