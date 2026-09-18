@@ -95,6 +95,15 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn('"dir:${PAYLOAD_EXPORT}"', script)
         self.assertIn('dir:/payload "containers-storage:$1"', script)
 
+    def test_production_boot_args_and_unsupported_paths(self):
+        script = (ROOT / "iso/scripts/build-iso.sh").read_text()
+        self.assertNotIn("enforcing=0", script)
+        self.assertNotIn("rd.utah.isofile", script)
+        self.assertNotIn("loopback.cfg", script)
+        self.assertIn("root=live:LABEL=${LABEL}", script)
+        self.assertIn("rd.live.image", script)
+        self.assertIn("rd.live.overlay.overlayfs=1", script)
+
     def test_build_explicitly_dispatches_iso_after_both_image_jobs(self):
         import yaml
         build = yaml.safe_load((ROOT / ".github/workflows/build.yml").read_text())
