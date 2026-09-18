@@ -57,6 +57,7 @@ check:
     test -f scripts/mirror-shim.sh
     test -f scripts/install-v4l2loopback.sh
     test -f packages/RPM-GPG-KEY-fedora-44-primary
+    test -f scripts/bootc_lifecycle.py
     test -f contracts/bluefin-desktop.toml
     # The reusable image workflow checks out this repository without
     # submodules. Populate them here before validating the source contract;
@@ -82,6 +83,7 @@ check:
     grep -q 'live_customize' iso/scripts/build-iso-tacklebox.sh
     grep -q 'offline_payloads' iso/scripts/build-iso-tacklebox.sh
     grep -q 'Secure Boot DISABLED' iso/scripts/build-iso-tacklebox.sh
+    test -f iso/scripts/lifecycle-e2e.sh
     python3 -m json.tool iso/live/src/etc/bootc-installer/images.json >/dev/null
     python3 -m json.tool iso/live/src/etc/bootc-installer/recipe.json >/dev/null
     grep -q 'org.bootcinstaller.Installer' iso/live/src/install-flatpaks.sh
@@ -355,6 +357,12 @@ luks-test iso_path="output/utah-live.iso" image="ghcr.io/projectbluefin/utah:tes
 # verified result can be driven by hand instead of only asserted about.
 try-installed:
     bash iso/scripts/boot-installed.sh
+
+# Validate bootc upgrade and rollback lifecycle between two immutable digests in QEMU.
+# Boots a known Utah deployment, stages/upgrades to candidate digest via bootc/uupd,
+# verifies graphical desktop, rolls back, and verifies the previous deployment.
+lifecycle-test disk_or_iso="output/bootable.raw" candidate_image="ghcr.io/projectbluefin/utah:testing":
+    bash iso/scripts/lifecycle-e2e.sh "{{ disk_or_iso }}" "{{ candidate_image }}"
 
 generate-build-tags base_name stream flavor kernel_pin build_number version event_name event_number:
     @echo "{{ stream }} {{ version }}"
