@@ -126,6 +126,25 @@ class PackageResolutionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 checker.pinned_inputs(path)
 
+    def test_install_repos_derived_from_packages(self):
+        repos = installer.install_repos(ROOT / "packages")
+        self.assertEqual(repos, ("utah-packages", "public-hummingbird-x86_64-rpms"))
+
+    def test_install_repos_priority_and_filtering(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dirpath = Path(tmp)
+            (dirpath / "a.repo").write_text("[low-prio]\n# utah-install: true\npriority=50\n")
+            (dirpath / "b.repo").write_text("[high-prio]\n# utah-install: true\npriority=5\n")
+            (dirpath / "c.repo").write_text("[unmarked]\npriority=1\n")
+            self.assertEqual(installer.install_repos(dirpath), ("high-prio", "low-prio"))
+
+    def test_install_repos_empty_or_no_marked_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dirpath = Path(tmp)
+            (dirpath / "unmarked.repo").write_text("[unmarked]\nname=unmarked\n")
+            with self.assertRaises(ValueError):
+                installer.install_repos(dirpath)
+
 
 class ParityContractTests(unittest.TestCase):
     OVERLAY = ROOT / "packages/utah.toml"
