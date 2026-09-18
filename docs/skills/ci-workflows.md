@@ -50,7 +50,8 @@ opaque `exit status 71` from the image build (comment,
   (`scripts/check_workflow_outputs.py`), the syntax gate
   (`scripts/check-script-syntax.py`), and the ban on flavor literals in
   workflows.
-- `just check-parity` -- `packages/bluefin.toml` against Bluefin's upstream.
+- `just check-parity` -- `packages/bluefin.toml` against Bluefin's upstream
+  pinned at `packages/.bluefin-parity-ref`.
 - `just check-repos` -- the complete installation transaction against the
   digest-pinned base and package repository, including extension build tools.
 
