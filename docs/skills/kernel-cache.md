@@ -148,11 +148,19 @@ open, and the gaming flavors failed the ISO test on a black screen with
 kernel, came up through `simpledrm`. The script enables `SYSFB_SIMPLEFB` and
 `DRM_SIMPLEDRM` (the firmware framebuffer as a KMS device on any hardware),
 plus `DRM_VIRTIO_GPU` and `DRM_BOCHS` for VMs, and gates on `DRM_SIMPLEDRM`
-like the filesystem options. Native drivers for real gaming GPUs (amdgpu, xe)
-are not enabled yet: they need linux-firmware in the image, which the install
-set does not carry (projectbluefin/utah#97). When diagnosing a black live
-session, compare `live-serial.log` for `[drm] Initialized` lines between the
-`main` and `gaming` diagnostics artifacts before reading GDM logs.
+like the filesystem options.
+
+Native GPU drivers for real gaming hardware are built as modules: `DRM_AMDGPU`
+(with Display Core, `DRM_AMD_DC`) for AMD GPUs and `DRM_XE` for Intel Arc and
+Battlemage, both gated in `required_config`. `DRM_NOUVEAU` is omitted because
+the NVIDIA flavors use the proprietary module. At runtime, these drivers
+require their corresponding firmware (`amd-gpu-firmware`, `intel-gpu-firmware`),
+which the image carries via `linux-firmware`. When diagnosing display issues on
+real hardware, verify that the installed gaming flavor initializes its native
+driver (`[drm] Initialized amdgpu` in the journal) rather than falling back to
+`simpledrm`. When diagnosing a black live session, compare `live-serial.log`
+for `[drm] Initialized` lines between the `main` and `gaming` diagnostics
+artifacts before reading GDM logs.
 
 ```bash
 just kernel-cache-tag
