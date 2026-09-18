@@ -97,7 +97,8 @@ class EvidenceTests(unittest.TestCase):
 
     def test_production_boot_args_and_unsupported_paths(self):
         script = (ROOT / "iso/scripts/build-iso.sh").read_text()
-        self.assertNotIn("enforcing=0", script)
+        self.assertIn("enforcing=0", script)
+        self.assertIn("Documented exception (Issue #22)", script)
         self.assertNotIn("rd.utah.isofile", script)
         self.assertNotIn("loopback.cfg", script)
         self.assertIn("root=live:LABEL=${LABEL}", script)

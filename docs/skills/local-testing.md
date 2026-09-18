@@ -146,14 +146,19 @@ persists.
 ### Kernel arguments and SELinux enforcement
 
 Production live boot entries configure:
-`root=live:LABEL=UTAH_LIVE rd.live.image rd.live.overlay.overlayfs=1 console=ttyS0,115200n8`
+`root=live:LABEL=UTAH_LIVE rd.live.image rd.live.overlay.overlayfs=1 enforcing=0 console=ttyS0,115200n8`
 
 - Every kernel argument corresponds to an implemented and tested dracut boot
   path (`dmsquash-live`, `overlayfs`, and serial console logging).
-- **SELinux policy**: The live session runs with SELinux in **Enforcing** mode
-  by default. Permissive mode (`enforcing=0`) is disabled in production media.
-  Any debugging exception must be explicitly supplied as an interactive boot
-  argument by the developer.
+- **SELinux policy (Documented Exception)**: The live session runs with
+  SELinux in **Permissive** mode (`enforcing=0`) as an approved documented
+  exception (Issue #22). The squashfs live rootfs is assembled rootless inside
+  `podman unshare`, where `security.selinux` extended attributes cannot be
+  written without root privilege, leaving rootfs files unlabeled. Booting an
+  unlabeled live root in Enforcing mode causes denials in systemd and GDM that
+  hang the live session. Permissive mode remains in place for live media until
+  xattr-preserving squashfs build tooling lands. Installed target systems boot
+  in **Enforcing** mode.
 
 ### Secure Boot strategy
 
@@ -164,12 +169,15 @@ Production live boot entries configure:
   a signed bootloader binary.
 - **Custom flavor kernels (`gaming`, `nvidia-gaming`)**: The OGC gaming kernel
   (`linux-ogc`) is compiled from source and unsigned. Secure Boot systems
-  require either disabling Secure Boot or enrolling a Project Bluefin/Utah
-  Machine Owner Key (MOK) into UEFI NVRAM using `mokutil` (`ujust enroll-secure-boot-key`).
+  require either disabling Secure Boot or manually enrolling a Machine Owner Key
+  (MOK) into UEFI NVRAM using `mokutil` (planned tooling; no automated helper
+  currently exists in-tree).
 - **Custom flavor modules (`nvidia`, `nvidia-gaming`)**: Out-of-tree NVIDIA
   kernel modules compiled against the base or OGC kernel run under kernel
-  lockdown when Secure Boot is active. Unsigned modules fail to load; production
-  deployments sign modules via `scripts/sign-file` with an enrolled MOK key.
+  lockdown when Secure Boot is active. Unsigned modules fail to load; signing
+  modules with an enrolled MOK key (e.g. via the kernel's `sign-file` utility)
+  is planned for future release pipelines, but currently module signing is not
+  implemented in-tree and Secure Boot must remain disabled.
 
 ## Verification
 

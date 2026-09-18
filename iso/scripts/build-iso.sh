@@ -130,11 +130,14 @@ mmd -i "${ESP}" ::/EFI ::/EFI/BOOT ::/loader ::/loader/entries ::/images ::/imag
 mcopy -i "${ESP}" "${SYSTEMD_BOOT}" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "${ESP}" "${VMLINUZ}" ::/images/pxeboot/vmlinuz
 mcopy -i "${ESP}" "${INITRD}" ::/images/pxeboot/initrd.img
+# Documented exception (Issue #22): rootless podman unshare cannot write security.selinux
+# xattrs into the squashfs root, leaving it unlabeled. enforcing=0 is required for live boot
+# to avoid systemd/GDM denials until xattr-preserving rootfs assembly is implemented.
 cat > "${WORK}/utah-live.conf" <<EOF
  title   ${TITLE}
  linux   /images/pxeboot/vmlinuz
  initrd  /images/pxeboot/initrd.img
- options root=live:LABEL=${LABEL} rd.live.image rd.live.overlay.overlayfs=1 console=ttyS0,115200n8
+ options root=live:LABEL=${LABEL} rd.live.image rd.live.overlay.overlayfs=1 enforcing=0 console=ttyS0,115200n8
 EOF
 sed -i 's/^ //' "${WORK}/utah-live.conf"
 printf 'timeout 5\ndefault utah-live.conf\n' > "${WORK}/loader.conf"
