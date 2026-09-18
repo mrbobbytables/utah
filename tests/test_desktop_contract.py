@@ -288,6 +288,32 @@ class ServiceMaskParityTests(unittest.TestCase):
         self.assertIn("uupd.timer", testing_skill)
         self.assertIn("rollback", testing_skill)
 
+    def test_desktop_contract_declares_masked_services(self):
+        import tomllib
+        contract = tomllib.loads((ROOT / "contracts/bluefin-desktop.toml").read_text())
+        masked = contract.get("services", {}).get("masked", [])
+        self.assertIn("bootc-fetch-apply-updates.timer", masked)
+        self.assertIn("bootc-fetch-apply-updates.service", masked)
+
+    def test_unit_masked_helper_verifies_dev_null_symlink(self):
+        import tempfile
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "verify_desktop_contract", ROOT / "scripts/verify-desktop-contract.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            lib_dir = root / "usr/lib/systemd/system"
+            lib_dir.mkdir(parents=True)
+            unit_symlink = lib_dir / "bootc-fetch-apply-updates.timer"
+            unit_symlink.symlink_to("/dev/null")
+
+            self.assertTrue(module.unit_masked("bootc-fetch-apply-updates.timer", root=root))
+            self.assertFalse(module.unit_masked("bootc-fetch-apply-updates.service", root=root))
+
 
 
 if __name__ == "__main__":
