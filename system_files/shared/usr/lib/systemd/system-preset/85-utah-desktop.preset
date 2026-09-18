@@ -10,5 +10,6 @@ enable ublue-system-setup.service
 enable systemd-resolved.service
 enable bootc-unified-storage.service
 enable dconf-update.service
+enable input-remapper.service
 disable sshd.service
 disable rpm-ostree.service
