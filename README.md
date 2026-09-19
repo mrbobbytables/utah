@@ -78,16 +78,17 @@ This is the honest list, and it is why the label above says pre-alpha.
   ISO milestone.
 - **Legacy BIOS support (switch works, fresh install is UEFI-only).**
   A fresh `bootc install to-disk` or live media installation on a legacy BIOS
-  machine cannot write a BIOS bootloader: the upstream Fedora Hummingbird base
-  image (`images/bootc-os/hummingbird/default/Containerfile`) installs only
-  `grub2-efi-x64`, `shim-x64`, and `efibootmgr`, generating bootupd metadata
-  solely for EFI (`EFI.json`). There is no `grub2-pc` and no BIOS update
-  payload in the base image, and Utah adds none.
+  machine does not produce a bootable disk: while GRUB BIOS packages are present,
+  the upstream Fedora Hummingbird base image
+  (`images/bootc-os/hummingbird/default/Containerfile` in gitlab.com/redhat/hummingbird/containers)
+  installs only `grub2-efi-x64`, `shim-x64`, and `efibootmgr`, generates bootupd metadata
+  solely for EFI (`EFI.json`), and carries an EFI payload only, leaving bootupd with
+  nothing to install a BIOS bootloader with.
   However, switching an existing legacy-BIOS installation (such as Bluefin on
   legacy BIOS with MBR/GPT and BIOS GRUB via `bootupd`) using `bootc switch`
   works cleanly, as the pre-existing bootloader loads the new kernel, and clean
-  rollbacks succeed. Fresh installs remain UEFI-only until a BIOS payload is
-  shipped in the base image or contract manifests (links #22, #102).
+  rollbacks succeed. Fresh installs remain UEFI-only until a bootupd BIOS payload
+  is available (links #22, #102).
 - **The NVIDIA and gaming flavors are unproven.** The OGC kernel compiles with
   `sched_ext` and `binderfs` genuinely enabled, and the NVIDIA open module
   compiles for the base kernel. The module against the OGC kernel, the driver

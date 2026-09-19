@@ -130,15 +130,17 @@ persists.
 ## Firmware and bootloader compatibility (UEFI vs. BIOS)
 
 - **Fresh installs (`bootc install to-disk` / live ISO) are UEFI-only**:
-  Hummingbird base installs only `grub2-efi-x64`, `shim-x64`, and `efibootmgr`
-  with EFI bootupd metadata (`EFI.json`). Utah adds no `grub2-pc` or BIOS
-  payload; fresh disk installs on legacy BIOS cannot write an MBR bootloader.
+  Fresh `bootc install to-disk` on legacy BIOS does not produce a bootable disk.
+  Although GRUB BIOS packages (like `grub2-pc`) are present, bootupd carries an EFI
+  payload only (generated from `images/bootc-os/hummingbird/default/Containerfile`
+  in gitlab.com/redhat/hummingbird/containers), leaving nothing to install a BIOS
+  bootloader with.
 - **Switching existing installs (`bootc switch`) works on legacy BIOS**:
   Switching a legacy-BIOS system (e.g. ThinkPad X230 with GPT/MBR and BIOS GRUB)
   from Bluefin to Utah succeeds: the existing bootloader loads the new kernel,
   and `bootc rollback` works cleanly. `bootupctl` reports `Boot method: BIOS`.
-- **Resolution path**: Fresh BIOS installs remain unsupported until the base
-  or contract ships `grub2-pc` and a BIOS payload (tracked in #102, links #22).
+- **Resolution path**: Fresh BIOS installs remain unsupported until a bootupd
+  BIOS payload is provided (tracked in #102, links #22).
 
 ## Verification
 
