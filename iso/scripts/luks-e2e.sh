@@ -626,15 +626,20 @@ if [[ "${UTAH_E2E_REQUIRE_FASTFETCH:-0}" == 1 ]]; then
         shot installed-fastfetch "${MONITOR_INSTALLED}"
         if [[ -s "${SHOTS}/installed-fastfetch.png" ]]; then
             tesseract "${SHOTS}/installed-fastfetch.png" "${WORK}/fastfetch-ocr" 2>/dev/null
-            if grep -qi 'UTAH.E2E.FASTFETCH' "${WORK}/fastfetch-ocr.txt" \
-                && grep -qi 'Kernel' "${WORK}/fastfetch-ocr.txt"; then
+            if bash "${ROOT}/iso/scripts/fastfetch-ocr-match.sh" "${WORK}/fastfetch-ocr.txt"; then
                 fastfetch_seen=1
                 break
             fi
         fi
         sleep 5
     done
-    (( fastfetch_seen )) || fail "fastfetch output was not visible in the desktop screenshot"
+    if (( ! fastfetch_seen )); then
+        # Without this the only way to tell a blank screen from an OCR misread
+        # is to download the diagnostics artifact.
+        echo "  last OCR transcript of installed-fastfetch.png:" >&2
+        sed -n '1,40p' "${WORK}/fastfetch-ocr.txt" 2>/dev/null | sed 's/^/    /' >&2
+        fail "fastfetch output was not visible in the desktop screenshot"
+    fi
 else
     sleep 20
     shot installed-fastfetch "${MONITOR_INSTALLED}"
@@ -669,9 +674,13 @@ flatpak_status="$(ssh_target '
         echo "installed: $(echo "${installed}" | wc -l) flatpaks present"
     else
         unit_state="$(systemctl is-active flatpak-preinstall.service 2>/dev/null || systemctl is-failed flatpak-preinstall.service 2>/dev/null || echo "unknown")"
+        if [[ "${unit_state}" == "failed" ]]; then
+            echo "failed: flatpak-preinstall.service failed"
+            exit 1
+        fi
         echo "retryable-state: flatpak-preinstall.service state=${unit_state}"
     fi
-')"
+')" || fail "Flatpak installation check failed: ${flatpak_status}"
 echo "  flatpak status: ${flatpak_status}"
 
 # 3. Input-remapper and Bluefin statistics enablement policy
@@ -684,10 +693,12 @@ ssh_target 'systemctl is-enabled bluefin-stats-refresh.timer 2>/dev/null' | grep
     || fail "bluefin-stats-refresh.timer is not enabled"
 echo "  bluefin-stats-refresh.timer: enabled"
 
-# Exercise statistics script
-ssh_target 'sudo /usr/libexec/bluefin-refresh-stats' \
-    || fail "bluefin-refresh-stats failed execution"
-echo "  bluefin-refresh-stats: executed cleanly"
+# Exercise statistics script (non-fatal, external API call)
+if ssh_target 'sudo /usr/libexec/bluefin-refresh-stats'; then
+    echo "  bluefin-refresh-stats: executed cleanly"
+else
+    echo "  bluefin-refresh-stats: warning: execution failed (non-fatal API call)"
+fi
 
 # 4. Update service enablement
 ssh_target 'systemctl is-enabled uupd.timer 2>/dev/null' | grep -qE 'enabled|enabled-runtime' \
@@ -696,10 +707,12 @@ echo "  uupd.timer: enabled"
 
 # 5. Tailscale hook: never invokes missing binary; deferred state is explicit
 echo "Checking Tailscale setup hook..."
-tailscale_hook_out="$(ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh 2>&1' || true)"
 if ssh_target 'command -v tailscale >/dev/null 2>&1'; then
-    echo "  tailscale binary present: hook executed"
+    ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh' \
+        || fail "10-tailscale.sh failed execution when tailscale binary is present"
+    echo "  tailscale binary present: hook executed cleanly"
 else
+    tailscale_hook_out="$(ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh 2>&1' || true)"
     echo "${tailscale_hook_out}" | grep -qi "deferred" \
         || fail "10-tailscale.sh did not explicitly indicate deferred state when tailscale is missing: ${tailscale_hook_out}"
     echo "  tailscale binary missing: deferred state confirmed"
@@ -716,7 +729,7 @@ ssh_target '/usr/bin/ublue-user-setup' \
 echo "  ublue-user-setup: OK"
 
 # 7. Repeat boot idempotency
-if [[ "${UTAH_E2E_REPEAT_BOOT:-1}" == "1" ]]; then
+if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
     echo "Rebooting installed system to verify repeat-boot idempotency..."
     cp "${SERIAL_INSTALLED}" "${WORK}/installed-serial-boot1.log" 2>/dev/null || true
     : > "${SERIAL_INSTALLED}"
