@@ -445,6 +445,10 @@ echo "=== Phase 6/6: log in and prove the desktop starts ==="
 echo "Waiting for the installed system to reach the graphical target..."
 emergency_seen=""
 for i in $(seq 1 90); do
+    if ssh_target 'systemctl is-active graphical.target' >/dev/null 2>&1; then
+        echo "  ssh: reached the graphical target"; break
+    fi
+
     if grep -qa "Reached target.*Graphical" "${SERIAL_INSTALLED}" 2>/dev/null; then
         echo "  serial: reached the graphical target"; break
     fi
