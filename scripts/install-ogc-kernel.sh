@@ -150,9 +150,10 @@ scripts/config --module OVERLAY_FS --module SQUASHFS --enable SQUASHFS_ZSTD \
 # The firmware framebuffer as a KMS device (see required_config above), plus
 # the two paravirtual GPUs QEMU offers, so a VM gets a proper display rather
 # than the boot framebuffer. Native GPU drivers for real gaming hardware:
-# amdgpu (with Display Core) for AMD GPUs and xe for Intel Arc / Battlemage,
-# backed by linux-firmware in the image. DRM_NOUVEAU is omitted because the
-# nvidia flavors use the proprietary module.
+# amdgpu (with Display Core) for AMD GPUs and xe for Intel Arc / Battlemage.
+# Note: runtime firmware blobs (amd-gpu-firmware, intel-gpu-firmware) are tracked
+# in projectbluefin/utah#97; enabling driver modules here prepares the kernel build.
+# DRM_NOUVEAU is omitted because the nvidia flavors use the proprietary module.
 scripts/config --enable SYSFB --enable SYSFB_SIMPLEFB \
                --enable DRM --enable DRM_SIMPLEDRM \
                --module DRM_VIRTIO_GPU --module DRM_BOCHS \
