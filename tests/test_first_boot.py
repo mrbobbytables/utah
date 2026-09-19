@@ -69,25 +69,7 @@ function version-script() {
         )
 
     def test_missing_tailscale_binary_is_deferred_without_failure(self):
-        # bin_dir has no tailscale binary, ensure host tailscale is not reached if PATH isolated
-        isolated_env = {
-            "PATH": str(self.bin_dir) + ":/bin:/usr/bin",
-        }
-        # If /usr/bin has tailscale on the host, shadow it with a non-existent dir or mock
-        # We can shadow tailscale by ensuring it's not found:
-        shadow_path = self.tmp_dir / "empty_path"
-        shadow_path.mkdir()
-        # Find path to essential utilities (bash, getent, cut, id)
-        res = self.run_hook(
-            env_override={
-                "PATH": str(shadow_path) + ":/bin:/usr/bin",
-                # Force command -v tailscale to fail
-                "BASH_ENV": str(self.tmp_dir / "no_ts.sh"),
-            }
-        )
-        (self.tmp_dir / "no_ts.sh").write_text("unset -f tailscale\n")
-
-        # Let's verify with an explicit PATH that has no tailscale
+        # Isolate PATH with essential utilities only, without tailscale
         clean_bin = self.tmp_dir / "clean_bin"
         clean_bin.mkdir()
         for cmd in ["bash", "cat", "echo", "grep", "id", "getent", "cut", "mkdir", "rm"]:
@@ -95,11 +77,31 @@ function version-script() {
             if src and Path(src).exists():
                 (clean_bin / cmd).symlink_to(src)
 
-        res = self.run_hook(env_override={"PATH": str(clean_bin)})
+        res = self.run_hook(env_override={"PATH": str(clean_bin), "PKEXEC_UID": str(os.getuid())})
         self.assertEqual(res.returncode, 0)
         self.assertIn("deferred", res.stdout.lower())
         self.assertIn("tailscale binary not found", res.stdout.lower())
         # Deferred state must NOT write versioning tag
+        self.assertFalse(self.versioning_file.exists())
+
+    def test_unset_or_invalid_pkexec_uid_is_deferred_without_failure(self):
+        # Create mock tailscale in bin_dir
+        mock_ts = self.bin_dir / "tailscale"
+        mock_ts.write_text("#!/usr/bin/bash\nexit 0\n")
+        mock_ts.chmod(0o755)
+
+        # 1. Unset PKEXEC_UID
+        res = self.run_hook(env_override={"PKEXEC_UID": ""})
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("pkexec_uid not set", res.stdout.lower())
+        self.assertIn("deferred", res.stdout.lower())
+        self.assertFalse(self.versioning_file.exists())
+
+        # 2. Invalid/unresolvable PKEXEC_UID (getent fails, must not crash under pipefail)
+        res_invalid = self.run_hook(env_override={"PKEXEC_UID": "9999999"})
+        self.assertEqual(res_invalid.returncode, 0)
+        self.assertIn("operator user not resolved", res_invalid.stdout.lower())
+        self.assertIn("deferred", res_invalid.stdout.lower())
         self.assertFalse(self.versioning_file.exists())
 
     def test_present_tailscale_binary_is_invoked_and_versioned(self):
@@ -112,7 +114,7 @@ exit 0
 """)
         mock_ts.chmod(0o755)
 
-        res = self.run_hook()
+        res = self.run_hook(env_override={"PKEXEC_UID": str(os.getuid())})
         self.assertEqual(res.returncode, 0)
         self.assertTrue(log_file.exists())
         log_content = log_file.read_text()
@@ -124,7 +126,7 @@ exit 0
 
         # Second execution must be idempotent and not re-run tailscale set
         log_file.unlink()
-        res2 = self.run_hook()
+        res2 = self.run_hook(env_override={"PKEXEC_UID": str(os.getuid())})
         self.assertEqual(res2.returncode, 0)
         self.assertFalse(log_file.exists())
 

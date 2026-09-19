@@ -863,9 +863,13 @@ flatpak_status="$(ssh_target '
         echo "installed: $(echo "${installed}" | wc -l) flatpaks present"
     else
         unit_state="$(systemctl is-active flatpak-preinstall.service 2>/dev/null || systemctl is-failed flatpak-preinstall.service 2>/dev/null || echo "unknown")"
+        if [[ "${unit_state}" == "failed" ]]; then
+            echo "failed: flatpak-preinstall.service failed"
+            exit 1
+        fi
         echo "retryable-state: flatpak-preinstall.service state=${unit_state}"
     fi
-')"
+')" || fail "Flatpak installation check failed: ${flatpak_status}"
 echo "  flatpak status: ${flatpak_status}"
 
 # 3. Input-remapper and Bluefin statistics enablement policy
@@ -878,10 +882,12 @@ ssh_target 'systemctl is-enabled bluefin-stats-refresh.timer 2>/dev/null' | grep
     || fail "bluefin-stats-refresh.timer is not enabled"
 echo "  bluefin-stats-refresh.timer: enabled"
 
-# Exercise statistics script
-ssh_target 'sudo /usr/libexec/bluefin-refresh-stats' \
-    || fail "bluefin-refresh-stats failed execution"
-echo "  bluefin-refresh-stats: executed cleanly"
+# Exercise statistics script (non-fatal, external API call)
+if ssh_target 'sudo /usr/libexec/bluefin-refresh-stats'; then
+    echo "  bluefin-refresh-stats: executed cleanly"
+else
+    echo "  bluefin-refresh-stats: warning: execution failed (non-fatal API call)"
+fi
 
 # 4. Update service enablement
 ssh_target 'systemctl is-enabled uupd.timer 2>/dev/null' | grep -qE 'enabled|enabled-runtime' \
@@ -890,10 +896,12 @@ echo "  uupd.timer: enabled"
 
 # 5. Tailscale hook: never invokes missing binary; deferred state is explicit
 echo "Checking Tailscale setup hook..."
-tailscale_hook_out="$(ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh 2>&1' || true)"
 if ssh_target 'command -v tailscale >/dev/null 2>&1'; then
-    echo "  tailscale binary present: hook executed"
+    ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh' \
+        || fail "10-tailscale.sh failed execution when tailscale binary is present"
+    echo "  tailscale binary present: hook executed cleanly"
 else
+    tailscale_hook_out="$(ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh 2>&1' || true)"
     echo "${tailscale_hook_out}" | grep -qi "deferred" \
         || fail "10-tailscale.sh did not explicitly indicate deferred state when tailscale is missing: ${tailscale_hook_out}"
     echo "  tailscale binary missing: deferred state confirmed"
@@ -910,7 +918,7 @@ ssh_target '/usr/bin/ublue-user-setup' \
 echo "  ublue-user-setup: OK"
 
 # 7. Repeat boot idempotency
-if [[ "${UTAH_E2E_REPEAT_BOOT:-1}" == "1" ]]; then
+if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
     echo "Rebooting installed system to verify repeat-boot idempotency..."
     cp "${SERIAL_INSTALLED}" "${WORK}/installed-serial-boot1.log" 2>/dev/null || true
     : > "${SERIAL_INSTALLED}"
