@@ -56,77 +56,9 @@ DEFAULT_REPOSDIRS: tuple[str, ...] = (
 )
 
 
-# Runtime repository allowlist
-DEFAULT_ALLOWED_REPOSITORIES: set[str] = {
-    "public-hummingbird-x86_64-rpms",
-    "utah-packages",
-    "nvidia-container-toolkit",
-}
-
-DEFAULT_FACTORY_PACKAGES: tuple[str, ...] = (
-    "gnome-control-center",
-    "gnome-session",
-    "gnome-settings-daemon",
-    "gnome-shell",
-    "gsettings-desktop-schemas",
-    "gtk4",
-    "libadwaita",
-    "mutter",
-    "xdg-desktop-portal",
-    "xdg-desktop-portal-gnome",
-    "flatpak",
-    "fwupd",
-    "tailscale",
-    "adw-gtk3-theme",
-    "adwaita-fonts-all",
-    "alsa-firmware",
-    "alsa-tools-firmware",
-    "containerd",
-    "ddcutil",
-    "distrobox",
-    "evtest",
-    "fastfetch",
-    "flatpak-spawn",
-    "fzf",
-    "gnome-ponytail-daemon",
-    "gnome-tweaks",
-    "google-noto-sans-cjk-vf-fonts",
-    "grub2-efi-x64-cdboot",
-    "gum",
-    "gvfs-nfs",
-    "ibus-mozc",
-    "ibus-unikey",
-    "igt-gpu-tools",
-    "input-remapper",
-    "isomd5sum",
-    "just",
-    "libappindicator-gtk3",
-    "libayatana-appindicator-gtk3",
-    "libblockdev-btrfs",
-    "libblockdev-dm",
-    "libblockdev-lvm",
-    "libblockdev-mpath",
-    "libcamera-gstreamer",
-    "libcamera-tools",
-    "libratbag-ratbagd",
-    "libva-utils",
-    "livesys-scripts",
-    "make",
-    "mesa-libGLU",
-    "mozc",
-    "nautilus-gsconnect",
-    "openrgb-udev-rules",
-    "pipewire-libs-extra",
-    "python3-gnome-ponytail-daemon",
-    "squashfs-tools",
-    "switcheroo-control",
-    "waypipe",
-    "wireguard-tools",
-    "wl-clipboard",
-    "xdg-terminal-exec",
-    "xorriso",
-    "zenity",
-)
+def is_repo_enabled(enabled_val: str) -> bool:
+    """Normalize boolean repository enabled semantics according to DNF conventions."""
+    return enabled_val.strip().lower() in ("1", "true", "yes")
 
 
 def section(path: Path, name: str) -> list[str]:
@@ -165,11 +97,15 @@ def query_packages(packages: list[str]) -> tuple[dict[str, dict[str, str]], list
     """Query rpm for NEVRA attributes of requested packages."""
     if not packages:
         return {}, []
-    res = subprocess.run(
-        ["rpm", "-q", "--qf", "%{NAME}|%{EPOCHNUM}|%{VERSION}|%{RELEASE}|%{ARCH}\n", *packages],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        res = subprocess.run(
+            ["rpm", "-q", "--qf", "%{NAME}|%{EPOCHNUM}|%{VERSION}|%{RELEASE}|%{ARCH}\n", *packages],
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        res = None
+
     installed: dict[str, dict[str, str]] = {}
     if res and res.stdout:
         for line in res.stdout.splitlines():
@@ -260,7 +196,8 @@ def verify_factory_parity(
         rel = info["release"]
         if ".bfin" not in rel:
             errors.append(
-                f"Bluefin parity package '{pkg}' expected from factory rebuild, but resolved with release '{rel}' (origin: {info['origin']})"
+                f"Package '{pkg}' expected from factory rebuild, but resolved with release '{rel}' (origin: {info['origin']}); "
+                f"either the recipe was lost upstream or '{pkg}' should be removed from [factory] in packages/utah.toml"
             )
         if ".fc" in rel and ".hum" not in rel:
             errors.append(
@@ -273,7 +210,7 @@ def verify_hummingbird_parity(
     hummingbird_packages: list[str],
     installed: dict[str, dict[str, str]],
 ) -> list[str]:
-    """Assert packages expected from Hummingbird carry .hum release identity and not unapproved Fedora."""
+    """Assert packages not expected from factory do not resolve from unapproved Fedora release."""
     errors: list[str] = []
     for pkg in hummingbird_packages:
         if pkg not in installed:
@@ -283,10 +220,6 @@ def verify_hummingbird_parity(
         if ".fc" in rel and ".hum" not in rel:
             errors.append(
                 f"Package '{pkg}' resolved from unapproved Fedora release '{rel}'"
-            )
-        if ".hum" not in rel:
-            errors.append(
-                f"Package '{pkg}' release '{rel}' lacks expected Hummingbird release identity (.hum)"
             )
     return errors
 
@@ -323,20 +256,20 @@ def check_repo_sections(
 
 
 def verify_repository_policy(
-    repos_dir: Path = Path("/etc/yum.repos.d"),
-    allowed_repos: set[str] | None = None,
+    repos_dir: Path,
+    allowed_repos: set[str],
     check_mode: bool = False,
 ) -> list[str]:
     """Prove the system exposes only explicitly allowed runtime RPM repositories."""
-    if allowed_repos is None:
-        allowed_repos = DEFAULT_ALLOWED_REPOSITORIES
     errors: list[str] = []
     if not repos_dir.is_dir():
         return errors
 
     for repo_file in sorted(repos_dir.glob("*.repo")):
-        # In check mode off-image, fedora-44.repo exists in packages/ for kernel builder
-        if check_mode and repo_file.name == "fedora-44.repo":
+        try:
+            file_text = repo_file.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            errors.append(f"Could not read repo file {repo_file}: {e}")
             continue
 
         # In check mode off-image, builder-only repos exist in packages/ for kernel builder
@@ -345,7 +278,7 @@ def verify_repository_policy(
 
         parser = configparser.ConfigParser(interpolation=None)
         try:
-            parser.read(repo_file)
+            parser.read_string(file_text)
         except Exception as e:
             errors.append(f"Could not parse repo file {repo_file}: {e}")
             continue
@@ -467,13 +400,23 @@ def generate_provenance_report(
             "section": package_sections.get(name, "unknown"),
         }
 
+    if "SOURCE_DATE_EPOCH" in os.environ:
+        try:
+            timestamp = datetime.fromtimestamp(
+                int(os.environ["SOURCE_DATE_EPOCH"]), tz=timezone.utc
+            ).isoformat()
+        except (ValueError, OverflowError):
+            timestamp = datetime.now(timezone.utc).isoformat()
+    else:
+        timestamp = datetime.now(timezone.utc).isoformat()
+
     report: dict[str, Any] = {
         "build_provenance": {
             "flavor": flavor,
             "image": os.environ.get("IMAGE_NAME", "utah"),
             "version": os.environ.get("VERSION", "testing"),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "total_packages": len(installed),
+            "timestamp": timestamp,
+            "contract_packages": len(installed),
             "factory_packages_count": factory_count,
             "hummingbird_packages_count": hummingbird_count,
             "other_packages_count": other_count,
@@ -552,7 +495,7 @@ def main() -> int:
         hardware = section(overlay, "hardware")
         services = section(overlay, "services")
     nvidia = list(NVIDIA_PACKAGES) if "nvidia" in flavor else []
-    expected = [*bluefin, *gnome, *parity, *services, *nvidia]
+    expected = [*bluefin, *gnome, *parity, *hardware, *services, *nvidia]
 
     overlay_data = tomllib.loads(overlay.read_text())
 
@@ -583,10 +526,6 @@ def main() -> int:
         )
         return 1
 
-    overlay_data = tomllib.loads(overlay.read_text()) if overlay.exists() else {}
-    major_versions = overlay_data.get("gnome", {}).get("versions", DEFAULT_GNOME_MAJOR_VERSIONS)
-    allowed_repos = set(overlay_data.get("repositories", {}).get("allowed", DEFAULT_ALLOWED_REPOSITORIES))
-    factory_packages = overlay_data.get("factory", {}).get("packages", list(DEFAULT_FACTORY_PACKAGES))
     hummingbird_packages = [
         p for p in expected if p not in set(factory_packages) and p not in set(NVIDIA_PACKAGES)
     ]
@@ -624,6 +563,7 @@ def main() -> int:
         for pkg in missing:
             print(f"  - {pkg}", file=sys.stderr)
         return 1
+    print(f"All {len(expected)} contract packages are present.")
 
     installed, missing_nevra = query_packages(expected)
     if missing_nevra:

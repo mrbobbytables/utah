@@ -14,6 +14,7 @@
 #   [factory]         contract packages that must resolve from the utah-packages
 #                     factory rebuild, carrying its .bfin release identity
 #   [parity]          what Bluefin gets from Fedora's base image and Hummingbird has
+#   [hardware]        device firmware the bootable base leaves out entirely
 #   [build]           toolchain needed to build the pinned GNOME extensions
 #   [services]        packages whose units 40-services.sh enables, which the
 #                     bootable base does not already carry

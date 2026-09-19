@@ -1,5 +1,4 @@
 {
-  "generated_at": "2026-09-20",
   "schema_version": "1.0",
   "skills": [
     {
@@ -125,9 +124,9 @@
         "supply-chain",
         "provenance"
       ],
-      "description": "Bluefin parity contract: verbatim bluefin.toml, utah.toml overlay, supply-chain NEVRA attestation, repository allowlist, and build provenance. Use when modifying packages, repository policy, or resolving parity failures.",
+      "description": "Bluefin parity contract: verbatim bluefin.toml, utah.toml overlay, firmware, [unavailable] rules, NEVRA attestation, repository allowlist, provenance. Use when changing packages or repository policy, or debugging parity failures.",
       "version": "1.1",
-      "last_updated": "2026-09-20",
+      "last_updated": "2026-09-26",
       "doc_type": "policy"
     },
     {

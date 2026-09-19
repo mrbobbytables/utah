@@ -1,7 +1,7 @@
 ---
 name: package-contract
 version: "1.1"
-last_updated: "2026-09-20"
+last_updated: "2026-09-26"
 id: package-contract
 one_line_purpose: Maintain Bluefin package parity, supply-chain attestation, and repository policy.
 entry_point: docs/skills/package-contract.md
@@ -12,9 +12,9 @@ status: active
 dependencies: []
 tags: [packages, parity, bluefin, contracts, supply-chain, provenance]
 description: >-
-  Bluefin parity contract: verbatim bluefin.toml, utah.toml overlay,
-  supply-chain NEVRA attestation, repository allowlist, and build provenance.
-  Use when modifying packages, repository policy, or resolving parity failures.
+  Bluefin parity contract: verbatim bluefin.toml, utah.toml overlay, firmware,
+  [unavailable] rules, NEVRA attestation, repository allowlist, provenance.
+  Use when changing packages or repository policy, or debugging parity failures.
 metadata:
   type: policy
 ---
