@@ -106,12 +106,12 @@ like the filesystem options.
 Native GPU drivers for real gaming hardware are built as modules: `DRM_AMDGPU`
 (with Display Core, `DRM_AMD_DC`) for AMD GPUs and `DRM_XE` for Intel Arc and
 Battlemage, both gated in `required_config`. `DRM_NOUVEAU` is omitted because
-the NVIDIA flavors use the proprietary module. At runtime, these drivers
-require their corresponding firmware (`amd-gpu-firmware`, `intel-gpu-firmware`),
-which the image carries via `linux-firmware`. When diagnosing display issues on
-real hardware, verify that the installed gaming flavor initializes its native
-driver (`[drm] Initialized amdgpu` in the journal) rather than falling back to
-`simpledrm`. When diagnosing a black live session, compare `live-serial.log`
+the NVIDIA flavors use the proprietary module. Runtime firmware blobs
+(`amd-gpu-firmware`, `intel-gpu-firmware`) are tracked in projectbluefin/utah#97
+and are not yet carried by the base install set. When diagnosing display issues on
+real hardware, verify whether the installed gaming flavor initializes its native
+driver (`[drm] Initialized amdgpu` in the journal) or falls back to
+`simpledrm` if firmware is absent. When diagnosing a black live session, compare `live-serial.log`
 for `[drm] Initialized` lines between the `main` and `gaming` diagnostics
 artifacts before reading GDM logs.
 
