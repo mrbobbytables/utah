@@ -120,7 +120,7 @@ def main() -> int:
     # flavors only satisfied it because install-ogc-kernel.sh leaves its own
     # tree behind. A module tree is what says the image can boot that kernel,
     # which is the thing being asserted.
-    if not Path(f"/usr/lib/modules/{base}").is_dir():
+    if not base or not Path(f"/usr/lib/modules/{base}").is_dir():
         candidates = sorted(d.name for d in Path("/usr/lib/modules").glob("*")
                             if d.name != ogc_release and d.is_dir())
         if not candidates:

@@ -1,7 +1,7 @@
 ---
 name: package-contract
 version: "1.0"
-last_updated: "2026-09-18"
+last_updated: "2026-09-19"
 id: package-contract
 one_line_purpose: Maintain Bluefin package parity and Utah's overlay manifest.
 entry_point: docs/skills/package-contract.md
@@ -114,6 +114,18 @@ drifted once, so a contract package was installed and never verified
 (install-packages.py:~125, verify-rpm-contract.py:~60). The manifest path in
 the verifier is only the off-image `--check` fallback and asserts nothing
 about installation.
+
+On NVIDIA flavors (`IMAGE_FLAVOR=nvidia` or `nvidia-gaming`),
+`scripts/verify-rpm-contract.py` also asserts that the kernel module
+(`extra/nvidia/nvidia.ko`) is present for every bootable kernel in the image and
+that userspace tools (`nvidia-smi`, `nvidia-driver-version`) exist. Determining
+the base kernel release cannot rely solely on `rpm -q kernel`, because `kernel`
+is a metapackage that may not be installed on a minimal bootc base, and rpm queries
+may return nothing or unhelpful text such as `package kernel is not installed`. If
+no release resolves from rpm (empty output), or if the resolved release does not
+correspond to a directory under `/usr/lib/modules/<release>`, the verifier falls
+back to the module trees present on disk under `/usr/lib/modules/` (excluding the
+OGC gaming release for the base check).
 
 ## Failure semantics
 
