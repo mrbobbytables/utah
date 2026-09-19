@@ -74,13 +74,15 @@ def unit_masked(unit: str, root: Path = Path("/")) -> bool:
     etc_path = root / "etc/systemd/system" / unit
     if etc_path.is_symlink() and etc_path.resolve() == Path("/dev/null"):
         return True
-    try:
-        result = subprocess.run(
-            ["systemctl", "is-enabled", unit], capture_output=True, text=True, check=False
-        )
-        return result.returncode == 0 and result.stdout.strip() == "masked"
-    except FileNotFoundError:
-        return False
+    if root == Path("/"):
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-enabled", unit], capture_output=True, text=True, check=False
+            )
+            return result.stdout.strip() == "masked"
+        except FileNotFoundError:
+            return False
+    return False
 
 
 def validate_contract(contract: dict[str, Any]) -> list[str]:

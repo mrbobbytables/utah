@@ -314,6 +314,48 @@ class ServiceMaskParityTests(unittest.TestCase):
             self.assertTrue(module.unit_masked("bootc-fetch-apply-updates.timer", root=root))
             self.assertFalse(module.unit_masked("bootc-fetch-apply-updates.service", root=root))
 
+    def test_unit_masked_helper_systemctl_fallback(self):
+        import importlib.util
+        from unittest.mock import patch
+        import subprocess
+        spec = importlib.util.spec_from_file_location(
+            "verify_desktop_contract", ROOT / "scripts/verify-desktop-contract.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        # systemctl is-enabled returns exit code 1 with stdout "masked\n" when a unit is masked
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["systemctl", "is-enabled", "masked-sample.service"],
+                returncode=1,
+                stdout="masked\n",
+                stderr="",
+            )
+            # When root is "/", fallback to systemctl queries host and returns True
+            self.assertTrue(module.unit_masked("masked-sample.service", root=Path("/")))
+            mock_run.assert_called_once_with(
+                ["systemctl", "is-enabled", "masked-sample.service"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        # When unit is not masked (e.g. "disabled" with exit code 1)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["systemctl", "is-enabled", "disabled-sample.service"],
+                returncode=1,
+                stdout="disabled\n",
+                stderr="",
+            )
+            self.assertFalse(module.unit_masked("disabled-sample.service", root=Path("/")))
+
+        # When root is not "/", fallback to systemctl is skipped to prevent host pollution
+        with patch("subprocess.run") as mock_run:
+            self.assertFalse(module.unit_masked("masked-sample.service", root=Path("/tmp/other-root")))
+            mock_run.assert_not_called()
+
 
 
 if __name__ == "__main__":
