@@ -12,11 +12,6 @@ WEEK=604800
 # Allow users to opt out without disabling the timer.
 [ -e "$DISABLED_FILE" ] && exit 0
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "utah-countme: jq is unavailable; skipping telemetry" >&2
-    exit 0
-fi
-
 if ! command -v curl >/dev/null 2>&1; then
     echo "utah-countme: curl is unavailable; skipping telemetry" >&2
     exit 0
@@ -33,6 +28,8 @@ EPOCH_FILE="${STATE_DIR}/epoch"
 LASTRUN_FILE="${STATE_DIR}/lastrun"
 
 # 1. Read or initialize epoch file
+# Note: The epoch is recorded the first time this script runs (typically ~10m
+# after first boot via OnBootSec=10m) and acts as the baseline for cohort age.
 if [ ! -f "$EPOCH_FILE" ]; then
     echo "$NOW" > "$EPOCH_FILE" || {
         echo "utah-countme: cannot initialize epoch file; skipping telemetry" >&2
@@ -77,15 +74,21 @@ IMAGE_TAG="unknown"
 IMAGE_FLAVOR="unknown"
 
 if [ -f "$IMAGE_INFO" ]; then
-    INFO_NAME=$(jq -r '."image-name" // empty' "$IMAGE_INFO" 2>/dev/null || true)
+    read -r INFO_NAME INFO_TAG INFO_FLAVOR < <(python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    print(d.get("image-name", "") or "", d.get("image-tag", "") or "", d.get("image-flavor", "") or "")
+except Exception:
+    print("", "", "")
+' "$IMAGE_INFO")
     if [ -n "$INFO_NAME" ]; then
         REPO="$INFO_NAME"
     fi
-    INFO_TAG=$(jq -r '."image-tag" // empty' "$IMAGE_INFO" 2>/dev/null || true)
     if [ -n "$INFO_TAG" ]; then
         IMAGE_TAG="$INFO_TAG"
     fi
-    INFO_FLAVOR=$(jq -r '."image-flavor" // empty' "$IMAGE_INFO" 2>/dev/null || true)
     if [ -n "$INFO_FLAVOR" ]; then
         IMAGE_FLAVOR="$INFO_FLAVOR"
     fi
@@ -128,7 +131,6 @@ fi
 USER_AGENT="utah-countme (${REPO} ${OS_VERSION_ID}; ${IMAGE_FLAVOR}; Linux.${ARCH})"
 URL="https://countme.projectbluefin.io/metalink?repo=${REPO}&tag=${IMAGE_TAG}&flavor=${IMAGE_FLAVOR}&arch=${ARCH}&countme=${BUCKET}"
 
-# 6. Send ping
-if curl -sf --retry 3 --max-time 10 -H "User-Agent: ${USER_AGENT}" "$URL" >/dev/null; then
-    echo "$NOW" > "$LASTRUN_FILE"
-fi
+# 6. Send ping (update lastrun unconditionally to prevent outage retry storms)
+echo "$NOW" > "$LASTRUN_FILE"
+curl -sf --retry 3 --max-time 10 -H "User-Agent: ${USER_AGENT}" "$URL" >/dev/null || true

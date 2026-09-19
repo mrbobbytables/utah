@@ -211,7 +211,7 @@ class CountmeUnitTest(unittest.TestCase):
             self.assertEqual((state_dir / "epoch").read_text(), "not-a-number")
             self.assertFalse((state_dir / "lastrun").exists())
 
-    def test_curl_failure_does_not_update_lastrun(self):
+    def test_curl_failure_still_updates_lastrun_to_prevent_retry_storm(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             state_dir = tmp_path / "state"
@@ -234,7 +234,7 @@ class CountmeUnitTest(unittest.TestCase):
             res = subprocess.run([str(SCRIPT_PATH)], env=env, capture_output=True, text=True)
             self.assertEqual(res.returncode, 0)
             self.assertTrue((state_dir / "epoch").exists())
-            self.assertFalse((state_dir / "lastrun").exists())
+            self.assertTrue((state_dir / "lastrun").exists())
 
     def test_os_release_fallback_when_image_info_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
