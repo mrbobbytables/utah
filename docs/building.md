@@ -74,7 +74,7 @@ Static checks run before expensive builds:
   to verify graphical target and GDM.
 - **Live ISO & offline installer validation**: `just iso testing && just boot-iso`
   assembles a UEFI live ISO with systemd-boot, embedding the `bootc-installer`
-  Flatpak bundle (`org.bootcinstaller.Installer`) and the target image in a VFS
+  Flatpak bundle (`org.bootcinstaller.Installer`) and the target image in an overlay
   `containers-storage` graphroot for offline installation. Booting validates the
   `UTAH_LIVE_READY` serial marker and offline installer execution.
 - **Encrypted installation**: `just luks-test` tests offline installation to an
@@ -83,9 +83,10 @@ Static checks run before expensive builds:
   digest artifacts before advancing the `:testing` tag.
 
 ### 5. Promotion and rollback lifecycle
-- **Stream promotion**: Images land first on `:testing`. After passing post-testing
-  E2E validation, `.github/workflows/promote-testing-to-main.yml` promotes testing
-  to `main`, updating `:stable` tags.
+- **Stream promotion**: Images land first on `:testing`. On push to `testing` or
+  nightly schedule, `.github/workflows/promote-testing-to-main.yml` squash-promotes
+  `testing` to `main`. The `:stable` release tag is cut separately by
+  `.github/workflows/execute-release.yml`.
 - **Branch synchronization**: `.github/workflows/sync-main-to-testing.yml` syncs
   protected `main` back into `testing` on every merge.
 - **Host rollbacks**: Deployed client systems roll back atomically via native

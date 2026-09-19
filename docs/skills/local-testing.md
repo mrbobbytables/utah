@@ -73,6 +73,16 @@ renders in the noVNC web console.
 Override `BASE_DIR`, `VM_RAM`, or `VM_CPUS` when needed -- they are Justfile
 variables read from the environment (defaults `output`, `8192`, `4`).
 
+## Upgrade and rollback lifecycle
+
+Utah manages immutable image updates through `uupd.timer` rather than legacy
+`rpm-ostree` or background `bootc-fetch-apply-updates.timer`. When testing
+lifecycle upgrades or switches (such as switching from Bluefin via `bootc switch`),
+`bootc-fetch-apply-updates.timer` must remain masked: an active fetch-apply timer
+stages candidate images automatically in the background outside uupd policy,
+which can inadvertently undo a user rollback (`bootc rollback`) upon subsequent
+reboot (links #17, #101).
+
 ## Composing with local packages
 
 When iterating on package builds locally before publication, use:
@@ -111,7 +121,7 @@ forever. Published images omit that argument and keep the service enabled.
 The live ISO reuses Utah's own kernel, dracut-live, and GNOME image. `just iso`
 builds a single-architecture UEFI live ISO that embeds the bootc-installer
 Flatpak bundle (`org.bootcinstaller.Installer`) and the target OCI image in a
-VFS `containers-storage` graphroot for offline installation (Dakota's
+overlay `containers-storage` graphroot for offline installation (Dakota's
 offline-payload design adapted for Utah's conventional bootc base; recipe
 comment above `iso` in `Justfile` and `iso/scripts/build-iso.sh`):
 

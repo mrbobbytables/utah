@@ -65,7 +65,7 @@ is built to produce, not something you can pull today.
 |---|---|---|
 | **OCI image composition** | Implemented (`just build-ghcr utah testing main` or `just build-local`) | Not yet published to GHCR |
 | **Installed VM execution** | Implemented (`just generate-bootable-image testing && just boot-vm`); reaches GDM and GNOME Shell | No pre-installed disk images distributed |
-| **Live ISO & installer** | Implemented (`just iso testing && just boot-iso`, `just luks-test`); UEFI ISO with systemd-boot, embedded `bootc-installer` Flatpak, and offline OCI VFS payload | No official ISO release artifacts published |
+| **Live ISO & installer** | Implemented (`just iso testing && just boot-iso`, `just luks-test`); UEFI ISO with systemd-boot, embedded `bootc-installer` Flatpak, and offline OCI overlay payload | No official ISO release artifacts published |
 
 ## Package parity with Bluefin
 
@@ -75,12 +75,12 @@ being noticed later.
 
 | | count |
 | --- | --- |
-| Bluefin base contract installed | **58** |
+| Bluefin base contract installed | **59** |
 | Utah additions (11 GNOME 51, 28 parity, 5 desktop services) | **44** |
-| Total verified contract packages | **102** |
+| Total verified contract packages | **103** |
 | Genuinely unavailable (deferred parity debt) | **9** |
 
-*Note: Total verified contract packages count is 102 on base images (`utah`, `utah-gaming`), 103 with the Fedora 44 release-specific package (`gnupg2-scdaemon`), and +1 NVIDIA package (`nvidia-container-toolkit`) on NVIDIA flavors.*
+*Note: Total verified contract packages count is 103 on standard flavors (including the Fedora 44 release-specific package `gnupg2-scdaemon`), with +1 NVIDIA package (`nvidia-container-toolkit`) on NVIDIA flavors for 104.*
 
 The install writes its resolved list to `/usr/share/utah/contract.txt` and the
 verify step asserts *that file*, so the two cannot disagree.
@@ -142,11 +142,12 @@ promotion or publication:
    while `just luks-test` verifies end-to-end encrypted installation without
    network. CI runs `.github/workflows/post-testing-e2e.yml` on testing builds
    before advancing `:testing`.
-5. **Promotion and rollback lifecycle** — Passing `:testing` images are promoted
-   to `:stable` via `.github/workflows/promote-testing-to-main.yml`. Pushes to
-   `main` trigger `.github/workflows/sync-main-to-testing.yml` to keep the
-   integration branch in sync. Deployed systems can roll back at any time with
-   standard `bootc rollback`.
+5. **Promotion and rollback lifecycle** — The promotion workflow (`.github/workflows/promote-testing-to-main.yml`)
+   is triggered by a push to `testing` (or a nightly schedule) and squash-promotes
+   `testing` to `main`. The `:stable` image tag is cut separately by
+   `.github/workflows/execute-release.yml`. Pushes to `main` trigger
+   `.github/workflows/sync-main-to-testing.yml` to keep the integration branch
+   in sync. Deployed systems can roll back at any time with standard `bootc rollback`.
 
 ## Known gaps
 
@@ -155,8 +156,19 @@ This is the honest list, and it is why the label above says pre-alpha.
 - **Public distribution is pending.** No OCI image or ISO artifact has been
   published to a public registry or release download. The local build, VM boot,
   and live ISO with embedded offline installer payload (`org.bootcinstaller.Installer`
-  Flatpak and target OCI image in a VFS `containers-storage` graphroot) are fully
+  Flatpak and target OCI image in an overlay `containers-storage` graphroot) are fully
   implemented and validated end-to-end.
+- **Cross-vendor switch and update timers (`bootc-fetch-apply-updates`).**
+  Switching to Utah from Bluefin or other bootc images carries Bluefin's
+  `/etc/systemd/system/timers.target.wants/bootc-fetch-apply-updates.timer`
+  symlink across ostree's 3-way `/etc` merge. Utah masks
+  `bootc-fetch-apply-updates.timer` and `bootc-fetch-apply-updates.service` in
+  both `/etc` and `/usr/lib/systemd/system/` (and presets them to disabled) so
+  background auto-updates do not bypass `uupd` policy or silently undo a
+  rollback (`bootc rollback`). Switchers should verify with
+  `systemctl is-enabled bootc-fetch-apply-updates.timer` and can re-assert the
+  mask (`systemctl mask --now bootc-fetch-apply-updates.timer bootc-fetch-apply-updates.service`)
+  if a merged `/etc` wants symlink remains on disk (links #17, #101).
 - **The NVIDIA and gaming flavors are unproven.** The OGC kernel compiles with
   `sched_ext` and `binderfs` genuinely enabled, and the NVIDIA open module
   compiles for the base kernel. The module against the OGC kernel, the driver
