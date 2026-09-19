@@ -24,9 +24,8 @@ noVNC and SSH ports; SSH is available only when the image was built with
 `ENABLE_SSHD=1`. The generated local disk carries `utah.local`, which skips
 unified-storage's registry repull; published images omit that argument and keep
 the service enabled. Fresh `bootc install to-disk` targets are UEFI-only
-because the Hummingbird base ships only EFI bootloader components (`grub2-efi-x64`,
-`shim-x64`); legacy BIOS is currently supported only by switching an existing
-install (`bootc switch`).
+because the Hummingbird base ships only an EFI bootupd payload; legacy BIOS is
+currently supported only by switching an existing install (`bootc switch`).
 
 ## Deep documentation
 
