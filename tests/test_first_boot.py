@@ -130,6 +130,35 @@ exit 0
         self.assertEqual(res2.returncode, 0)
         self.assertFalse(log_file.exists())
 
+    def test_failed_tailscale_set_rolls_back_version_stamp_and_retries(self):
+        # Create mock tailscale that fails
+        mock_ts = self.bin_dir / "tailscale"
+        mock_ts.write_text("""#!/usr/bin/bash
+if [ "$1" = "set" ]; then
+    exit 1
+fi
+exit 0
+""")
+        mock_ts.chmod(0o755)
+
+        res = self.run_hook(env_override={"PKEXEC_UID": str(os.getuid())})
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("warning: tailscale set --operator failed", res.stdout.lower())
+
+        # Version tag must NOT remain recorded after failure
+        if self.versioning_file.exists():
+            self.assertNotIn("privileged-tailscale", self.versioning_file.read_text())
+
+        # Second execution: mock tailscale now succeeds; should retry and record version tag
+        mock_ts.write_text("""#!/usr/bin/bash
+exit 0
+""")
+        mock_ts.chmod(0o755)
+        res2 = self.run_hook(env_override={"PKEXEC_UID": str(os.getuid())})
+        self.assertEqual(res2.returncode, 0)
+        self.assertTrue(self.versioning_file.exists())
+        self.assertIn("privileged-tailscale", self.versioning_file.read_text())
+
 
 class FlatpaksHookTests(unittest.TestCase):
     def setUp(self):
