@@ -192,9 +192,10 @@ Production live boot entries configure:
 
 - **Fresh installs (`bootc install to-disk` / live ISO) are UEFI-only**:
   Fresh `bootc install to-disk` on legacy BIOS does not produce a bootable disk.
-  Although GRUB BIOS packages (like `grub2-pc`) are present, bootupd carries an EFI
-  payload only (generated from `images/bootc-os/hummingbird/default/Containerfile`
-  in gitlab.com/redhat/hummingbird/containers), leaving nothing to install a BIOS
+  No GRUB BIOS packages (like `grub2-pc`) and no BIOS update payload exist anywhere
+  in the chain, and Utah adds none: bootupd carries an EFI payload only (generated
+  from `images/bootc-os/hummingbird/default/Containerfile` in
+  gitlab.com/redhat/hummingbird/containers), leaving nothing to install a BIOS
   bootloader with.
 - **Switching existing installs (`bootc switch`) works on legacy BIOS**:
   Switching a legacy-BIOS system (e.g. ThinkPad X230 with GPT/MBR and BIOS GRUB)

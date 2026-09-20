@@ -170,6 +170,11 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn("bootc switch", readme)
         self.assertIn("bootc install to-disk", skill)
         self.assertIn("grub2-pc", skill)
+        self.assertIn("no BIOS update payload", skill)
+        self.assertIn("no BIOS update payload", readme)
+        for text in (readme, skill):
+            self.assertNotIn("BIOS packages are present", text)
+            self.assertNotIn("grub2-pc`) are present", text)
         self.assertIn("bootc switch", skill)
         self.assertIn("bootc switch", building)
 

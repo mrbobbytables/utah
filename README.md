@@ -100,12 +100,12 @@ This is the honest list, and it is why the label above says pre-alpha.
   if a merged `/etc` wants symlink remains on disk (links #17, #101).
 - **Legacy BIOS support (switch works, fresh install is UEFI-only).**
   A fresh `bootc install to-disk` or live media installation on a legacy BIOS
-  machine does not produce a bootable disk: while GRUB BIOS packages are present,
-  the upstream Fedora Hummingbird base image
+  machine does not produce a bootable disk: the upstream Fedora Hummingbird base image
   (`images/bootc-os/hummingbird/default/Containerfile` in gitlab.com/redhat/hummingbird/containers)
   installs only `grub2-efi-x64`, `shim-x64`, and `efibootmgr`, generates bootupd metadata
-  solely for EFI (`EFI.json`), and carries an EFI payload only, leaving bootupd with
-  nothing to install a BIOS bootloader with.
+  solely for EFI (`EFI.json`), and carries an EFI payload only. No `grub2-pc` package
+  and no BIOS update payload exists anywhere in the chain, and Utah adds none, leaving
+  bootupd with nothing to install a BIOS bootloader with.
   However, switching an existing legacy-BIOS installation (such as Bluefin on
   legacy BIOS with MBR/GPT and BIOS GRUB via `bootupd`) using `bootc switch`
   works cleanly, as the pre-existing bootloader loads the new kernel, and clean
