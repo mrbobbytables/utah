@@ -158,29 +158,30 @@ def query_packages(packages: list[str]) -> tuple[dict[str, dict[str, str]], list
         text=True,
     )
     installed: dict[str, dict[str, str]] = {}
-    for line in res.stdout.splitlines():
-        line = line.strip()
-        if not line or "|" not in line:
-            continue
-        parts = line.split("|")
-        if len(parts) != 5:
-            continue
-        name, epoch, version, release, arch = parts
-        nevra = (
-            f"{name}-{version}-{release}.{arch}"
-            if epoch in ("", "0", "(none)")
-            else f"{name}-{epoch}:{version}-{release}.{arch}"
-        )
-        origin = determine_origin(name, release)
-        installed[name] = {
-            "name": name,
-            "epoch": epoch,
-            "version": version,
-            "release": release,
-            "arch": arch,
-            "nevra": nevra,
-            "origin": origin,
-        }
+    if res and res.stdout:
+        for line in res.stdout.splitlines():
+            line = line.strip()
+            if not line or "|" not in line:
+                continue
+            parts = line.split("|")
+            if len(parts) != 5:
+                continue
+            name, epoch, version, release, arch = parts
+            nevra = (
+                f"{name}-{version}-{release}.{arch}"
+                if epoch in ("", "0", "(none)")
+                else f"{name}-{epoch}:{version}-{release}.{arch}"
+            )
+            origin = determine_origin(name, release)
+            installed[name] = {
+                "name": name,
+                "epoch": epoch,
+                "version": version,
+                "release": release,
+                "arch": arch,
+                "nevra": nevra,
+                "origin": origin,
+            }
     missing = [p for p in packages if p not in installed]
     return installed, missing
 
@@ -290,7 +291,12 @@ def verify_repository_policy(
         # In check mode off-image, fedora-44.repo exists in packages/ for kernel builder
         if check_mode and repo_file.name == "fedora-44.repo":
             continue
-        parser = configparser.ConfigParser()
+
+        # In check mode off-image, builder-only repos exist in packages/ for kernel builder
+        if check_mode and "# builder-only: true" in file_text:
+            continue
+
+        parser = configparser.ConfigParser(interpolation=None)
         try:
             parser.read(repo_file)
         except Exception as e:
@@ -464,13 +470,23 @@ def main() -> int:
         print("RPM contract and repository policy syntax valid.")
         return 0
 
-    installed, missing = query_packages(expected)
+    missing = [pkg for pkg in expected if not is_installed(pkg)]
     if missing:
         print(
             f"ERROR: {len(missing)} of {len(expected)} contract packages are not installed:",
             file=sys.stderr,
         )
         for pkg in missing:
+            print(f"  - {pkg}", file=sys.stderr)
+        return 1
+
+    installed, missing_nevra = query_packages(expected)
+    if missing_nevra:
+        print(
+            f"ERROR: {len(missing_nevra)} of {len(expected)} contract packages could not be queried via RPM:",
+            file=sys.stderr,
+        )
+        for pkg in missing_nevra:
             print(f"  - {pkg}", file=sys.stderr)
         return 1
 
