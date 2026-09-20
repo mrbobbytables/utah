@@ -112,6 +112,9 @@ ssh_target() {
     sshpass -p "${TEST_PASSWORD}" ssh "${SSH_OPTS[@]}" \
         -p "${SSH_PORT_INSTALLED}" "${TEST_USER}@127.0.0.1" "$@"
 }
+sudo_target() {
+    ssh_target "printf '%s\n' '${TEST_PASSWORD}' | sudo -S env PKEXEC_UID=\"\$(id -u)\" $*"
+}
 
 monitor() {
     python3 - "$1" "$2" <<'PY'
@@ -694,7 +697,7 @@ ssh_target 'systemctl is-enabled bluefin-stats-refresh.timer 2>/dev/null' | grep
 echo "  bluefin-stats-refresh.timer: enabled"
 
 # Exercise statistics script (non-fatal, external API call)
-if ssh_target 'sudo /usr/libexec/bluefin-refresh-stats'; then
+if sudo_target '/usr/libexec/bluefin-refresh-stats'; then
     echo "  bluefin-refresh-stats: executed cleanly"
 else
     echo "  bluefin-refresh-stats: warning: execution failed (non-fatal API call)"
@@ -708,11 +711,11 @@ echo "  uupd.timer: enabled"
 # 5. Tailscale hook: never invokes missing binary; deferred state is explicit
 echo "Checking Tailscale setup hook..."
 if ssh_target 'command -v tailscale >/dev/null 2>&1'; then
-    ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh' \
+    sudo_target '/usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh' \
         || fail "10-tailscale.sh failed execution when tailscale binary is present"
     echo "  tailscale binary present: hook executed cleanly"
 else
-    tailscale_hook_out="$(ssh_target 'sudo /usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh 2>&1' || true)"
+    tailscale_hook_out="$(sudo_target '/usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh' 2>&1 || true)"
     echo "${tailscale_hook_out}" | grep -qi "deferred" \
         || fail "10-tailscale.sh did not explicitly indicate deferred state when tailscale is missing: ${tailscale_hook_out}"
     echo "  tailscale binary missing: deferred state confirmed"
@@ -720,7 +723,7 @@ fi
 
 # 6. Privileged and user setup execution
 echo "Exercising ublue-privileged-setup and ublue-user-setup..."
-ssh_target 'sudo /usr/bin/ublue-privileged-setup' \
+sudo_target '/usr/bin/ublue-privileged-setup' \
     || fail "ublue-privileged-setup execution failed"
 echo "  ublue-privileged-setup: OK"
 
@@ -734,7 +737,7 @@ if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
     cp "${SERIAL_INSTALLED}" "${WORK}/installed-serial-boot1.log" 2>/dev/null || true
     : > "${SERIAL_INSTALLED}"
 
-    ssh_target 'sudo systemctl reboot' 2>/dev/null || true
+    sudo_target 'systemctl reboot' 2>/dev/null || true
     sleep 5
 
     status=0
@@ -768,7 +771,7 @@ if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
         fail "repeat boot completed with failed setup units: ${failed_repeat}"
     fi
 
-    ssh_target 'sudo /usr/bin/ublue-privileged-setup' || fail "repeat boot: ublue-privileged-setup failed"
+    sudo_target '/usr/bin/ublue-privileged-setup' || fail "repeat boot: ublue-privileged-setup failed"
     ssh_target '/usr/bin/ublue-user-setup' || fail "repeat boot: ublue-user-setup failed"
     echo "  repeat boot: idempotent and clean"
 fi

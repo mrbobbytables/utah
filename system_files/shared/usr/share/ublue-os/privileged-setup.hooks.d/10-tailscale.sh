@@ -29,6 +29,17 @@ version-script tailscale privileged 1 || exit 0
 
 set -xeuo pipefail
 
-tailscale set --operator="${OPERATOR}" || {
+if ! tailscale set --operator="${OPERATOR}"; then
     echo "Warning: tailscale set --operator failed (tailscaled daemon may not be active yet)."
-}
+    # Roll back version stamp so subsequent boots retry setup
+    checker="${SETUP_CHECKER_FILE:-${HOME}/.local/share/ublue/setup_versioning.json}"
+    if [ -f "${checker}" ]; then
+        if command -v jq >/dev/null 2>&1 && jq -e '.version' "${checker}" >/dev/null 2>&1; then
+            tmp="$(mktemp)"
+            jq 'del(.version.privileged.tailscale)' "${checker}" > "${tmp}" && mv "${tmp}" "${checker}"
+        else
+            sed -i '/tailscale/d' "${checker}"
+        fi
+    fi
+    exit 0
+fi
