@@ -1,5 +1,6 @@
 """Unit tests for Bluefin first-boot services, hooks, and enablement policy."""
 
+import json
 import os
 import stat
 import subprocess
@@ -9,6 +10,54 @@ from pathlib import Path
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# Faithful copy of ublue-setup-services' libsetup.sh version-script
+# (ublue-os/packages, packages/ublue-setup-services/src/lib/libsetup.sh). The
+# hooks are only idempotent because of this function, and it manages
+# setup_versioning.json as jq-formatted JSON under `.version.<type>.<target>`.
+# A line-oriented stand-in would let the hooks' jq handling go untested and
+# would hide rollback bugs that only appear against the real file format.
+LIBSETUP_SH = r"""
+SETUP_CHECKER_FILE="${SETUP_CHECKER_FILE:-$HOME/.local/share/ublue/setup_versioning.json}"
+
+function version-script() {
+  TARGET_VERSIONING_NAME=$1
+  TYPE_OF_SERVICE=$2
+  VERSION=$3
+  shift
+  shift
+  shift
+
+  if [ ! -e "${SETUP_CHECKER_FILE}" ] ; then
+    mkdir -p "$(dirname "${SETUP_CHECKER_FILE}")"
+    echo "{}" > "${SETUP_CHECKER_FILE}"
+  fi
+
+  if [ "$(jq -r -c ".version.${TYPE_OF_SERVICE}.\"${TARGET_VERSIONING_NAME}\"" "${SETUP_CHECKER_FILE}")" == "${VERSION}" ] ; then
+    echo "Exiting as current version (${VERSION}) for ${TYPE_OF_SERVICE}-${TARGET_VERSIONING_NAME} is the same as latest version recorded on ${SETUP_CHECKER_FILE}"
+    return 1
+  fi
+  ANNOYING_JQ_WORKAROUND=$(mktemp)
+  jq ".version.${TYPE_OF_SERVICE}.\"${TARGET_VERSIONING_NAME}\" = \"${VERSION}\"" "${SETUP_CHECKER_FILE}" >"${ANNOYING_JQ_WORKAROUND}"
+  mv "${ANNOYING_JQ_WORKAROUND}" "${SETUP_CHECKER_FILE}"
+  set +x
+  return 0
+}
+"""
+
+
+def read_versioning(path):
+    """Parse setup_versioning.json, failing loudly if a hook corrupted it."""
+    raw = Path(path).read_text()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:  # pragma: no cover - failure detail only
+        raise AssertionError(f"setup_versioning.json is not valid JSON: {exc}\n{raw}") from exc
+
+
+def stamped_version(path, type_of_service, target):
+    """Return the recorded version for a hook, or None when it is not stamped."""
+    return read_versioning(path).get("version", {}).get(type_of_service, {}).get(target)
 
 
 class TailscaleHookTests(unittest.TestCase):
@@ -24,23 +73,7 @@ class TailscaleHookTests(unittest.TestCase):
         self.libsetup_dir = self.tmp_dir / "usr/lib/ublue/setup-services"
         self.libsetup_dir.mkdir(parents=True)
         self.libsetup_file = self.libsetup_dir / "libsetup.sh"
-        self.libsetup_file.write_text("""
-function version-script() {
-    local target="$1"
-    local type="$2"
-    local version="$3"
-    local checker="${SETUP_CHECKER_FILE}"
-    (
-        if [ -f "$checker" ] && grep -q "\"${type}-${target}\": \"${version}\"" "$checker" 2>/dev/null; then
-            exit 1
-        fi
-        mkdir -p "$(dirname "$checker")"
-        echo "\"${type}-${target}\": \"${version}\"" >> "$checker"
-        exit 0
-    )
-    return $?
-}
-""")
+        self.libsetup_file.write_text(LIBSETUP_SH)
 
     def run_hook(self, env_override=None):
         env = dict(os.environ)
@@ -72,7 +105,7 @@ function version-script() {
         # Isolate PATH with essential utilities only, without tailscale
         clean_bin = self.tmp_dir / "clean_bin"
         clean_bin.mkdir()
-        for cmd in ["bash", "cat", "echo", "grep", "id", "getent", "cut", "mkdir", "rm"]:
+        for cmd in ["bash", "cat", "echo", "grep", "id", "getent", "cut", "mkdir", "rm", "jq", "mktemp", "dirname"]:
             src = subprocess.run(["which", cmd], capture_output=True, text=True).stdout.strip()
             if src and Path(src).exists():
                 (clean_bin / cmd).symlink_to(src)
@@ -122,7 +155,7 @@ exit 0
 
         # Version tag must be recorded
         self.assertTrue(self.versioning_file.exists())
-        self.assertIn("privileged-tailscale", self.versioning_file.read_text())
+        self.assertEqual(stamped_version(self.versioning_file, "privileged", "tailscale"), "1")
 
         # Second execution must be idempotent and not re-run tailscale set
         log_file.unlink()
@@ -141,13 +174,21 @@ exit 0
 """)
         mock_ts.chmod(0o755)
 
+        # Pre-existing stamps from other hooks must survive the rollback: the
+        # hook edits the same jq-managed file every later hook reads.
+        self.versioning_file.write_text(
+            json.dumps({"version": {"privileged": {"flatpaks": "1"}, "user": {"flatpaks": "1"}}})
+        )
+
         res = self.run_hook(env_override={"PKEXEC_UID": str(os.getuid())})
         self.assertEqual(res.returncode, 0)
         self.assertIn("warning: tailscale set --operator failed", res.stdout.lower())
 
-        # Version tag must NOT remain recorded after failure
-        if self.versioning_file.exists():
-            self.assertNotIn("privileged-tailscale", self.versioning_file.read_text())
+        # Version tag must NOT remain recorded after failure, and the file must
+        # stay valid JSON with every other hook's stamp intact.
+        self.assertIsNone(stamped_version(self.versioning_file, "privileged", "tailscale"))
+        self.assertEqual(stamped_version(self.versioning_file, "privileged", "flatpaks"), "1")
+        self.assertEqual(stamped_version(self.versioning_file, "user", "flatpaks"), "1")
 
         # Second execution: mock tailscale now succeeds; should retry and record version tag
         mock_ts.write_text("""#!/usr/bin/bash
@@ -157,7 +198,18 @@ exit 0
         res2 = self.run_hook(env_override={"PKEXEC_UID": str(os.getuid())})
         self.assertEqual(res2.returncode, 0)
         self.assertTrue(self.versioning_file.exists())
-        self.assertIn("privileged-tailscale", self.versioning_file.read_text())
+        self.assertEqual(stamped_version(self.versioning_file, "privileged", "tailscale"), "1")
+        self.assertEqual(stamped_version(self.versioning_file, "privileged", "flatpaks"), "1")
+
+    def test_hook_never_rewrites_versioning_file_without_jq(self):
+        # setup_versioning.json is jq-managed JSON shared by every hook. A
+        # line-oriented rollback (sed) would strip the "tailscale" line and can
+        # leave a trailing comma, breaking version-script for all later hooks.
+        hook_code = (
+            ROOT / "system_files/shared/usr/share/ublue-os/privileged-setup.hooks.d/10-tailscale.sh"
+        ).read_text()
+        self.assertNotIn("sed -i", hook_code)
+        self.assertIn("del(.version.privileged.tailscale)", hook_code)
 
 
 class FlatpaksHookTests(unittest.TestCase):
@@ -170,23 +222,7 @@ class FlatpaksHookTests(unittest.TestCase):
         self.libsetup_dir = self.tmp_dir / "usr/lib/ublue/setup-services"
         self.libsetup_dir.mkdir(parents=True)
         self.libsetup_file = self.libsetup_dir / "libsetup.sh"
-        self.libsetup_file.write_text("""
-function version-script() {
-    local target="$1"
-    local type="$2"
-    local version="$3"
-    local checker="${SETUP_CHECKER_FILE}"
-    (
-        if [ -f "$checker" ] && grep -q "\"${type}-${target}\": \"${version}\"" "$checker" 2>/dev/null; then
-            exit 1
-        fi
-        mkdir -p "$(dirname "$checker")"
-        echo "\"${type}-${target}\": \"${version}\"" >> "$checker"
-        exit 0
-    )
-    return $?
-}
-""")
+        self.libsetup_file.write_text(LIBSETUP_SH)
 
     def run_hook(self, firefox_config_dir=None):
         hook_code = (
@@ -226,7 +262,7 @@ function version-script() {
         res = self.run_hook(firefox_config_dir=missing_dir)
         self.assertEqual(res.returncode, 0)
         self.assertTrue(self.versioning_file.exists())
-        self.assertIn("privileged-flatpaks", self.versioning_file.read_text())
+        self.assertEqual(stamped_version(self.versioning_file, "privileged", "flatpaks"), "1")
 
         # Second execution must be idempotent
         res2 = self.run_hook(firefox_config_dir=missing_dir)

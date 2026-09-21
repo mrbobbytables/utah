@@ -731,8 +731,14 @@ ssh_target '/usr/bin/ublue-user-setup' \
     || fail "ublue-user-setup execution failed"
 echo "  ublue-user-setup: OK"
 
-# 7. Repeat boot idempotency
-if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
+# 7. Repeat boot idempotency. This is the only check that proves first-boot
+# operations are idempotent (issue #19), so it runs by default in CI. Locally
+# it is opt-in with UTAH_E2E_REPEAT_BOOT=1, because it adds a second LUKS
+# unlock and graphical boot to the run; UTAH_E2E_REPEAT_BOOT=0 skips it in CI.
+repeat_boot_verified=0
+repeat_boot_default=0
+[[ "${CI:-}" == "true" ]] && repeat_boot_default=1
+if [[ "${UTAH_E2E_REPEAT_BOOT:-${repeat_boot_default}}" == "1" ]]; then
     echo "Rebooting installed system to verify repeat-boot idempotency..."
     cp "${SERIAL_INSTALLED}" "${WORK}/installed-serial-boot1.log" 2>/dev/null || true
     : > "${SERIAL_INSTALLED}"
@@ -773,6 +779,7 @@ if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
 
     sudo_target '/usr/bin/ublue-privileged-setup' || fail "repeat boot: ublue-privileged-setup failed"
     ssh_target '/usr/bin/ublue-user-setup' || fail "repeat boot: ublue-user-setup failed"
+    repeat_boot_verified=1
     echo "  repeat boot: idempotent and clean"
 fi
 
@@ -780,6 +787,18 @@ echo
 echo "PASS: Utah installed to an encrypted disk, unlocked, and ${TEST_USER} logged"
 echo "      in to a GNOME session on it."
 echo "Screenshots: ${SHOTS}"
+
+if (( repeat_boot_verified )); then
+    repeat_boot_record="7. The installed disk boots a second time, reaching the graphical target
+   with no failed setup units, and \`ublue-privileged-setup\` and
+   \`ublue-user-setup\` re-run cleanly — first-boot operations are idempotent.
+"
+else
+    repeat_boot_record="
+*Repeat-boot idempotency was not checked in this run; set
+\`UTAH_E2E_REPEAT_BOOT=1\` to include it.*
+"
+fi
 
 # Publish the screenshots as the record of what passed. A run that only prints
 # "PASS" is a claim; the same run with the greeter and the desktop it produced
@@ -826,7 +845,7 @@ the check beside it passed.
 4. Plymouth's passphrase prompt is answered and the root volume opens.
 5. The system reaches the graphical target rather than an emergency shell.
 6. The user logs in at the GDM greeter and gets a GNOME session.
-
+${repeat_boot_record}
 ## Screenshots
 
 ### The installed system, running

@@ -31,14 +31,25 @@ set -xeuo pipefail
 
 if ! tailscale set --operator="${OPERATOR}"; then
     echo "Warning: tailscale set --operator failed (tailscaled daemon may not be active yet)."
-    # Roll back version stamp so subsequent boots retry setup
+    # Roll back the version stamp so a subsequent boot retries setup.
+    # libsetup.sh keeps setup_versioning.json as jq-managed JSON, so only jq may
+    # rewrite it: a line-oriented fallback would strip the "tailscale" key and
+    # can leave a trailing comma, producing invalid JSON that breaks
+    # version-script for every later hook. Leaving the stamp in place only
+    # defers this one retry; corrupting the file breaks first boot entirely.
     checker="${SETUP_CHECKER_FILE:-${HOME}/.local/share/ublue/setup_versioning.json}"
     if [ -f "${checker}" ]; then
-        if command -v jq >/dev/null 2>&1 && jq -e '.version' "${checker}" >/dev/null 2>&1; then
-            tmp="$(mktemp)"
-            jq 'del(.version.privileged.tailscale)' "${checker}" > "${tmp}" && mv "${tmp}" "${checker}"
+        if ! command -v jq >/dev/null 2>&1; then
+            echo "Warning: jq is unavailable; leaving the Tailscale version stamp in ${checker} untouched."
         else
-            sed -i '/tailscale/d' "${checker}"
+            tmp="$(mktemp)"
+            if jq 'del(.version.privileged.tailscale)' "${checker}" > "${tmp}" 2>/dev/null; then
+                mv "${tmp}" "${checker}"
+                echo "Rolled back the Tailscale version stamp in ${checker}; setup will retry."
+            else
+                rm -f "${tmp}"
+                echo "Warning: ${checker} is not valid JSON; leaving the Tailscale version stamp untouched."
+            fi
         fi
     fi
     exit 0

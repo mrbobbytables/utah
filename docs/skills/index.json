@@ -107,7 +107,7 @@
       ],
       "description": "Local validation loop: build-ghcr, bootc install to-disk, QEMU/noVNC boot, live ISO. Use when validating changes end-to-end or debugging boot, GDM, or live-session failures.",
       "version": "1.0",
-      "last_updated": "2026-09-18",
+      "last_updated": "2026-09-20",
       "doc_type": "runbook"
     },
     {
