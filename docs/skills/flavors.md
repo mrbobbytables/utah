@@ -49,10 +49,12 @@ commentary -- it is what a flavor moves to when it is switched off
 `! grep -rnE 'utah-(nvidia|gaming)' .github/workflows/` and
 `! grep -nE '(utah|\{\{ image \}\})-(nvidia|gaming)' Justfile`). No workflow
 or recipe may carry its own copy of the flavor list or image names -- that drift
-is what `config/flavors.json` and `scripts/flavors.py` exist to stop. Image
-names are resolved centrally by delegating to `just image_name`, which queries
-`scripts/flavors.py image <flavor>`, ensuring build, promote, and release always
-agree on published image names.
+is what `config/flavors.json` and `scripts/flavors.py` exist to stop. Recipes
+that need an image name ask for it at the source -- `build-ghcr`, `gen-sbom`,
+and `secureboot` each run `python3 scripts/flavors.py image <flavor>` -- so
+build, promote, and release always agree on published image names. `just
+image_name` is the same query wrapped for callers outside the Justfile; no
+recipe goes through it.
 
 ## The matrix is split in two, by what each flavor builds on
 
@@ -79,8 +81,8 @@ group on that name; Utah's Justfile ignores it when naming images.
 - `images` / `releases` -- the same set shaped for the promote and release
   matrices (docstring, `scripts/flavors.py`).
 - `image FLAVOR` -- the published image name for a flavor (e.g. `utah` or
-  `utah-nvidia`), queried by `just image_name` and recipes that tag or publish
-  images.
+  `utah-nvidia`), called directly by the recipes that build, tag, or publish
+  images, and exposed to outside callers as `just image_name`.
 
 Unknown names in `flavors` are a hard error at read time, so a typo in the
 config fails before any matrix is built from it.
