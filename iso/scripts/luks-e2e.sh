@@ -113,7 +113,8 @@ ssh_target() {
         -p "${SSH_PORT_INSTALLED}" "${TEST_USER}@127.0.0.1" "$@"
 }
 sudo_target() {
-    ssh_target "printf '%s\n' '${TEST_PASSWORD}' | sudo -S env PKEXEC_UID=\"\$(id -u)\" $*"
+    printf '%s\n' "${TEST_PASSWORD}" \
+        | ssh_target "sudo -S -p '' env PKEXEC_UID=\"\$(id -u)\" $*"
 }
 
 monitor() {
@@ -688,11 +689,11 @@ echo "  flatpak status: ${flatpak_status}"
 
 # 3. Input-remapper and Bluefin statistics enablement policy
 echo "Checking enablement policy for input-remapper and statistics..."
-ssh_target 'systemctl is-enabled input-remapper.service 2>/dev/null' | grep -qE 'enabled|enabled-runtime' \
+ssh_target 'systemctl is-enabled input-remapper.service 2>/dev/null' | grep -qxE 'enabled(-runtime)?' \
     || fail "input-remapper.service is not enabled"
 echo "  input-remapper.service: enabled"
 
-ssh_target 'systemctl is-enabled bluefin-stats-refresh.timer 2>/dev/null' | grep -qE 'enabled|enabled-runtime' \
+ssh_target 'systemctl is-enabled bluefin-stats-refresh.timer 2>/dev/null' | grep -qxE 'enabled(-runtime)?' \
     || fail "bluefin-stats-refresh.timer is not enabled"
 echo "  bluefin-stats-refresh.timer: enabled"
 
@@ -704,7 +705,7 @@ else
 fi
 
 # 4. Update service enablement
-ssh_target 'systemctl is-enabled uupd.timer 2>/dev/null' | grep -qE 'enabled|enabled-runtime' \
+ssh_target 'systemctl is-enabled uupd.timer 2>/dev/null' | grep -qxE 'enabled(-runtime)?' \
     || fail "uupd.timer is not enabled"
 echo "  uupd.timer: enabled"
 
