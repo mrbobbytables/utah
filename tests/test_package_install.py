@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 import subprocess
 import tempfile
@@ -168,6 +168,43 @@ class PackageInstallPathTests(unittest.TestCase):
         commands: list[list[str]] = []
         returncodes = list(run_returncodes or [])
 
+        with ExitStack() as stack:
+            if contract_target is None and fail_contract_write is None:
+                # Never let an unparameterised test touch the real
+                # /usr/share/utah/contract.txt: as root that write succeeds and
+                # overwrites the host's system file.
+                sink = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+                contract_target = sink / "usr/share/utah/contract.txt"
+
+            return self._drive_main(
+                manifest,
+                overlay,
+                repos_dir,
+                real_path=real_path,
+                commands=commands,
+                returncodes=returncodes,
+                contract_target=contract_target,
+                installed_excluded=installed_excluded,
+                fail_contract_write=fail_contract_write,
+                major=major,
+                dnf_bin=dnf_bin,
+            )
+
+    def _drive_main(
+        self,
+        manifest: Path,
+        overlay: Path | None,
+        repos_dir: Path,
+        *,
+        real_path,
+        commands: list[list[str]],
+        returncodes: list[int],
+        contract_target: Path | None,
+        installed_excluded: list[str] | None,
+        fail_contract_write: OSError | None,
+        major: str,
+        dnf_bin: str,
+    ) -> tuple[int, list[list[str]], str]:
         def fake_path(arg, *rest):
             if str(arg) == RESOLVED_CONTRACT:
                 if fail_contract_write:
