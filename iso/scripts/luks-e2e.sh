@@ -670,9 +670,14 @@ fi
 
 echo "=== Validating Bluefin first-boot services and hooks at runtime ==="
 
+# Units whose failure this test must catch. A narrower filter silently ignores
+# the very services this harness enables, so every unit checked below by name
+# has to be matched here too.
+SETUP_UNIT_FILTER='ublue|setup|dconf-update|flatpak-|input-remapper|bluefin-stats-refresh'
+
 # 1. Assert no failed setup units or services on first boot
 echo "Checking first-boot units for failure..."
-failed_setup_units="$(ssh_target "systemctl list-units --state=failed --no-legend 2>/dev/null | grep -E 'ublue|setup|dconf-update' || true")"
+failed_setup_units="$(ssh_target "systemctl list-units --state=failed --no-legend 2>/dev/null | grep -E '${SETUP_UNIT_FILTER}' || true")"
 if [[ -n "${failed_setup_units}" ]]; then
     echo "Failed setup units found on first boot:" >&2
     echo "${failed_setup_units}" >&2
@@ -691,7 +696,11 @@ flatpak_status="$(ssh_target '
     if [[ -n "${installed}" ]]; then
         echo "installed: $(echo "${installed}" | wc -l) flatpaks present"
     else
-        unit_state="$(systemctl is-active flatpak-preinstall.service 2>/dev/null || systemctl is-failed flatpak-preinstall.service 2>/dev/null || echo "unknown")"
+        # `systemctl is-active` already prints "failed" for a failed unit and
+        # exits non-zero; chaining `is-failed` after it concatenated a second
+        # line onto the state and made the failure branch unreachable.
+        unit_state="$(systemctl is-active flatpak-preinstall.service 2>/dev/null || true)"
+        [[ -n "${unit_state}" ]] || unit_state="unknown"
         if [[ "${unit_state}" == "failed" ]]; then
             echo "failed: flatpak-preinstall.service failed"
             exit 1
@@ -785,7 +794,7 @@ if [[ "${UTAH_E2E_REPEAT_BOOT:-${repeat_boot_default}}" == "1" ]]; then
     done
     echo "  ssh: logged in after repeat boot"
 
-    failed_repeat="$(ssh_target "systemctl list-units --state=failed --no-legend 2>/dev/null | grep -E 'ublue|setup|dconf-update' || true")"
+    failed_repeat="$(ssh_target "systemctl list-units --state=failed --no-legend 2>/dev/null | grep -E '${SETUP_UNIT_FILTER}' || true")"
     if [[ -n "${failed_repeat}" ]]; then
         echo "Failed setup units found on repeat boot:" >&2
         echo "${failed_repeat}" >&2

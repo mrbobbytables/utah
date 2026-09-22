@@ -226,6 +226,71 @@ class RepeatBootIdempotencyTests(unittest.TestCase):
         self.assertIn("UTAH_E2E_REPEAT_BOOT", docs)
 
 
+class FirstBootUnitFailureTests(unittest.TestCase):
+    """A first-boot check that cannot see a failed unit proves nothing.
+
+    Both regressions guarded here reported success on a hard failure: the
+    failed-unit filter skipped every service this harness enables, and the
+    flatpak state probe concatenated two systemctl outputs so its failure
+    branch was unreachable.
+    """
+
+    SCRIPT = ROOT / "iso/scripts/luks-e2e.sh"
+
+    def unit_filter(self):
+        match = re.search(r"^SETUP_UNIT_FILTER='([^']+)'", self.SCRIPT.read_text(), re.M)
+        self.assertIsNotNone(match, "luks-e2e.sh no longer defines SETUP_UNIT_FILTER")
+        return re.compile(match.group(1))
+
+    def test_filter_matches_the_units_the_harness_enables(self):
+        pattern = self.unit_filter()
+        for unit in [
+            "flatpak-preinstall.service",
+            "flatpak-nuke-fedora.service",
+            "input-remapper.service",
+            "bluefin-stats-refresh.timer",
+            "bluefin-stats-refresh.service",
+            "ublue-system-setup.service",
+            "dconf-update.service",
+        ]:
+            with self.subTest(unit=unit):
+                self.assertTrue(pattern.search(f"  {unit} loaded failed failed Description"),
+                                f"failed-unit scan would ignore {unit}")
+
+    def test_both_failed_unit_scans_use_the_shared_filter(self):
+        script = self.SCRIPT.read_text()
+        self.assertEqual(script.count("grep -E '${SETUP_UNIT_FILTER}'"), 2)
+
+    def flatpak_probe(self):
+        """Extract the remote flatpak-status snippet the harness runs over ssh."""
+        script = self.SCRIPT.read_text()
+        start = script.index("flatpak_status=\"$(ssh_target '") + len("flatpak_status=\"$(ssh_target '")
+        return script[start:script.index("\n')\"", start)]
+
+    def run_probe(self, is_active):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        binp = Path(tmp.name)
+        (binp / "flatpak").write_text("#!/bin/bash\nexit 0\n")
+        (binp / "systemctl").write_text(
+            f'#!/bin/bash\n[[ "$1" == is-active ]] && echo "{is_active}"\n'
+            f'[[ "{is_active}" == active ]] && exit 0\nexit 3\n')
+        for name in ("flatpak", "systemctl"):
+            (binp / name).chmod(0o755)
+        return subprocess.run(["bash", "-c", self.flatpak_probe()], capture_output=True,
+                              text=True, env={"PATH": f"{binp}:{os.environ['PATH']}"})
+
+    def test_failed_preinstall_unit_fails_the_run(self):
+        res = self.run_probe("failed")
+        self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+        self.assertIn("failed: flatpak-preinstall.service failed", res.stdout)
+
+    def test_pending_preinstall_unit_is_reported_as_retryable(self):
+        res = self.run_probe("activating")
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertIn("retryable-state: flatpak-preinstall.service state=activating", res.stdout)
+
+
 class FastfetchOcrGateTests(unittest.TestCase):
     """The gate runs against tesseract output, which drops and mangles glyphs."""
 
