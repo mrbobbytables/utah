@@ -1,7 +1,7 @@
 ---
 name: local-testing
 version: "1.0"
-last_updated: "2026-09-18"
+last_updated: "2026-09-20"
 id: local-testing
 one_line_purpose: Build, install, and boot Utah locally in a VM or live ISO.
 entry_point: docs/skills/local-testing.md
@@ -120,8 +120,8 @@ forever. Published images omit that argument and keep the service enabled.
 
 The live ISO reuses Utah's own kernel, dracut-live, and GNOME image. `just iso`
 builds a single-architecture UEFI live ISO that embeds the bootc-installer
-Flatpak bundle (`org.bootcinstaller.Installer`) and the target OCI image in an
-overlay `containers-storage` graphroot for offline installation (Dakota's
+Flatpak bundle (`org.bootcinstaller.Installer`) and the target OCI image in a
+VFS `containers-storage` graphroot for offline installation (Dakota's
 offline-payload design adapted for Utah's conventional bootc base; recipe
 comment above `iso` in `Justfile` and `iso/scripts/build-iso.sh`):
 
