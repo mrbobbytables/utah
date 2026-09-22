@@ -1,5 +1,4 @@
 {
-
   "schema_version": "1.0",
   "skills": [
     {
@@ -105,7 +104,7 @@
         "vm",
         "testing"
       ],
-      "description": "Local validation loop: build-ghcr, bootc install to-disk, QEMU/noVNC boot, live ISO boot paths, and Secure Boot strategy. Use when validating changes end-to-end or debugging boot, GDM, or live-session failures.",
+      "description": "Local validation loop: build-ghcr, bootc install to-disk, QEMU/noVNC boot, live ISO boot paths, Secure Boot strategy, and firmware/bootloader compatibility. Use when validating changes end-to-end or debugging boot, GDM, or live-session failures.",
       "version": "1.0",
       "last_updated": "2026-09-18",
       "doc_type": "runbook"
