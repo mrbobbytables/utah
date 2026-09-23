@@ -133,6 +133,7 @@ The install transaction follows a strict execution sequence tested in
    `[excluded]`. Only those actually present are removed with
    `dnf remove --no-autoremove`. Position after the subcommand is mandatory
    for DNF5 compatibility.
+
 On NVIDIA flavors (`IMAGE_FLAVOR=nvidia` or `nvidia-gaming`),
 `scripts/verify-rpm-contract.py` also asserts that the kernel module
 (`extra/nvidia/nvidia.ko`) is present for every bootable kernel in the image and
