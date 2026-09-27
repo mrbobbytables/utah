@@ -1,9 +1,10 @@
 """Executed coverage for scripts/install-packages.py's install path.
 
 `tests/test_package_resolution.py` covers `--check`, `--resolve`, and the
-module-level helpers. The default install path in `main()` -- lines 227-271 --
-runs during image composition to actually invoke DNF and build the image, but
-was previously unexercised by any test suite.
+module-level helpers. The default install path in `main()` -- the branch taken
+when neither `--check` nor `--resolve` is passed -- runs during image
+composition to actually invoke DNF and build the image, but was previously
+unexercised by any test suite.
 
 These tests replace process boundaries (dnf, rpm, filesystem writes to
 `/usr/share/utah`) and assert:
