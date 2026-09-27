@@ -130,6 +130,7 @@ apps = [
 
 [services]
 enabled = [
+  "avahi-daemon.service",
   "bluetooth.service",
   "bootc-unified-storage.service",
   "brew-setup.service",
@@ -140,6 +141,8 @@ enabled = [
   "gdm.service",
   "input-remapper.service",
   "ModemManager.service",
+  "systemd-resolved.service",
+  "tailscaled.service",
   "ublue-system-setup.service",
   "uupd.timer",
 ]
