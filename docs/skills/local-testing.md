@@ -1,7 +1,7 @@
 ---
 name: local-testing
 version: "1.0"
-last_updated: "2026-09-23"
+last_updated: "2026-09-26"
 id: local-testing
 one_line_purpose: Build, install, and boot Utah locally in a VM or live ISO.
 entry_point: docs/skills/local-testing.md
@@ -282,14 +282,13 @@ terminal overlay, preventing duplicate verification evidence (#240). CI sets
 kernel output, and `UTAH_E2E_REQUIRE_SCREENSHOTS=1` to reject missing PNGs.
 The repeat-boot check reboots the installed disk after the first-boot checks
 and re-runs `ublue-privileged-setup`, `ublue-user-setup` and the failed-unit
-scan. It is the only check proving first-boot operations are idempotent, so it
-is on by default whenever `CI=true`; locally it is opt-in because it adds a
-second LUKS unlock and graphical boot (roughly ten minutes) to the run.
-`UTAH_E2E_REPEAT_BOOT` overrides the default in either direction:
+scan. It is the only check proving first-boot operations are idempotent, but
+it adds a second LUKS unlock and graphical boot (roughly ten minutes) to every
+flavor's run, so it is off by default everywhere, CI included. Set
+`UTAH_E2E_REPEAT_BOOT=1` to run it:
 
 ```bash
-UTAH_E2E_REPEAT_BOOT=1 just luks-test   # include it locally
-UTAH_E2E_REPEAT_BOOT=0 ...              # skip it in CI
+UTAH_E2E_REPEAT_BOOT=1 just luks-test
 ```
 
 The generated `docs/verification/README.md` states whether the run included

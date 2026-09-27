@@ -322,29 +322,28 @@ class EvidenceTests(unittest.TestCase):
 class RepeatBootIdempotencyTests(unittest.TestCase):
     """Issue #19 asks for proof that first boot is idempotent.
 
-    Only a second boot of the installed disk can give it, and a check that no
-    automated run ever enables proves nothing. The harness therefore turns the
-    repeat boot on whenever CI=true, and an operator can force it either way.
+    Only a second boot of the installed disk can give it, but it adds a second
+    LUKS unlock and graphical boot to every flavor's run, so it is opt-in
+    everywhere: CI=true alone must not turn it on.
     """
 
     SCRIPT = ROOT / "iso/scripts/luks-e2e.sh"
 
     def decide(self, env):
-        """Evaluate the harness's own default-selection lines under env."""
+        """Evaluate the harness's own repeat-boot condition under env."""
         lines = self.SCRIPT.read_text().splitlines()
-        start = next(i for i, l in enumerate(lines) if l.startswith("repeat_boot_default="))
-        snippet = "\n".join(lines[start:start + 2])
-        snippet += '\necho "${UTAH_E2E_REPEAT_BOOT:-${repeat_boot_default}}"'
+        cond = next(l for l in lines if l.startswith('if [[ "${UTAH_E2E_REPEAT_BOOT'))
+        snippet = cond + " echo 1; else echo 0; fi"
         run_env = {"PATH": os.environ["PATH"], **env}
         out = subprocess.run(["bash", "-c", snippet], capture_output=True, text=True,
                              env=run_env)
         self.assertEqual(out.returncode, 0, out.stderr)
         return out.stdout.strip()
 
-    def test_repeat_boot_runs_in_ci_and_is_opt_in_locally(self):
-        self.assertEqual(self.decide({"CI": "true"}), "1")
+    def test_repeat_boot_is_opt_in_even_in_ci(self):
+        self.assertEqual(self.decide({"CI": "true"}), "0")
         self.assertEqual(self.decide({}), "0")
-        self.assertEqual(self.decide({"CI": "true", "UTAH_E2E_REPEAT_BOOT": "0"}), "0")
+        self.assertEqual(self.decide({"CI": "true", "UTAH_E2E_REPEAT_BOOT": "1"}), "1")
         self.assertEqual(self.decide({"UTAH_E2E_REPEAT_BOOT": "1"}), "1")
 
     def test_repeat_boot_rechecks_setup_and_is_named_in_the_record(self):
@@ -423,6 +422,13 @@ class FirstBootUnitFailureTests(unittest.TestCase):
         res = self.run_probe("activating")
         self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
         self.assertIn("retryable-state: flatpak-preinstall.service state=activating", res.stdout)
+
+    def test_stopped_preinstall_unit_with_nothing_installed_fails_the_run(self):
+        for state in ("inactive", "unknown"):
+            with self.subTest(state=state):
+                res = self.run_probe(state)
+                self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+                self.assertIn("not activating/active", res.stdout)
 
 
 class FastfetchOcrGateTests(unittest.TestCase):

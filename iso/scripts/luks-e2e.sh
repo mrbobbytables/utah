@@ -880,6 +880,12 @@ flatpak_status="$(ssh_target '
             echo "failed: flatpak-preinstall.service failed"
             exit 1
         fi
+        # With nothing installed, only a preinstall that is still running is a
+        # retryable state; inactive or unknown means it will never deliver.
+        if [[ "${unit_state}" != "active" && "${unit_state}" != "activating" ]]; then
+            echo "failed: no flatpaks installed and flatpak-preinstall.service is ${unit_state}, not activating/active"
+            exit 1
+        fi
         echo "retryable-state: flatpak-preinstall.service state=${unit_state}"
     fi
 ')" || fail "Flatpak installation check failed: ${flatpak_status}"
@@ -895,12 +901,8 @@ ssh_target 'systemctl is-enabled bluefin-stats-refresh.timer 2>/dev/null' | grep
     || fail "bluefin-stats-refresh.timer is not enabled"
 echo "  bluefin-stats-refresh.timer: enabled"
 
-# Exercise statistics script (non-fatal, external API call)
-if sudo_target '/usr/libexec/bluefin-refresh-stats'; then
-    echo "  bluefin-refresh-stats: executed cleanly"
-else
-    echo "  bluefin-refresh-stats: warning: execution failed (non-fatal API call)"
-fi
+# Enablement is what this test owns. bluefin-refresh-stats itself is not run:
+# it fetches third-party stats over a network this guest does not have.
 
 # 4. Update service enablement
 ssh_target 'systemctl is-enabled uupd.timer 2>/dev/null' | grep -qxE 'enabled(-runtime)?' \
@@ -931,13 +933,11 @@ ssh_target '/usr/bin/ublue-user-setup' \
 echo "  ublue-user-setup: OK"
 
 # 7. Repeat boot idempotency. This is the only check that proves first-boot
-# operations are idempotent (issue #19), so it runs by default in CI. Locally
-# it is opt-in with UTAH_E2E_REPEAT_BOOT=1, because it adds a second LUKS
-# unlock and graphical boot to the run; UTAH_E2E_REPEAT_BOOT=0 skips it in CI.
+# operations are idempotent (issue #19), but it adds a second LUKS unlock and
+# graphical boot to every flavor's run, so it is opt-in everywhere, CI
+# included: set UTAH_E2E_REPEAT_BOOT=1 to run it.
 repeat_boot_verified=0
-repeat_boot_default=0
-[[ "${CI:-}" == "true" ]] && repeat_boot_default=1
-if [[ "${UTAH_E2E_REPEAT_BOOT:-${repeat_boot_default}}" == "1" ]]; then
+if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
     echo "Rebooting installed system to verify repeat-boot idempotency..."
     cp "${SERIAL_INSTALLED}" "${WORK}/installed-serial-boot1.log" 2>/dev/null || true
     : > "${SERIAL_INSTALLED}"
