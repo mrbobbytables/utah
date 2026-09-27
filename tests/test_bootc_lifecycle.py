@@ -78,6 +78,7 @@ class TestLifecyclePhaseTransitions(unittest.TestCase):
     def setUp(self):
         self.d_base = "sha256:" + "a" * 64
         self.d_cand = "sha256:" + "b" * 64
+        self.i_cand = "ghcr.io/projectbluefin/utah@" + self.d_cand
 
     def test_validate_baseline_success(self):
         raw = {
@@ -112,12 +113,12 @@ class TestLifecyclePhaseTransitions(unittest.TestCase):
             }
         }
         ok, msg, _ = bootc_lifecycle.validate_phase_transition(
-            "staged", raw, baseline_digest=self.d_base, candidate_digest=self.d_cand
+            "staged", raw, baseline_digest=self.d_base, candidate_image=self.i_cand
         )
         self.assertTrue(ok)
         self.assertIn("Upgrade staged successfully", msg)
 
-    def test_validate_staged_requires_candidate_digest(self):
+    def test_validate_staged_requires_candidate_image(self):
         raw = {
             "status": {
                 "booted": {
@@ -129,10 +130,10 @@ class TestLifecyclePhaseTransitions(unittest.TestCase):
             }
         }
         ok, msg, _ = bootc_lifecycle.validate_phase_transition(
-            "staged", raw, baseline_digest=self.d_base, candidate_digest=None
+            "staged", raw, baseline_digest=self.d_base, candidate_digest=self.d_cand
         )
         self.assertFalse(ok)
-        self.assertIn("Candidate digest is required", msg)
+        self.assertIn("Candidate image is required", msg)
 
     def test_validate_upgraded_requires_candidate_digest(self):
         raw = {
@@ -164,7 +165,7 @@ class TestLifecyclePhaseTransitions(unittest.TestCase):
             }
         }
         ok, msg, _ = bootc_lifecycle.validate_phase_transition(
-            "staged", raw, baseline_digest=self.d_base, candidate_digest=self.d_cand
+            "staged", raw, baseline_digest=self.d_base, candidate_image=self.i_cand
         )
         self.assertFalse(ok)
         self.assertIn("Atomic guarantee violated", msg)
@@ -181,10 +182,43 @@ class TestLifecyclePhaseTransitions(unittest.TestCase):
             }
         }
         ok, msg, _ = bootc_lifecycle.validate_phase_transition(
-            "staged", raw, baseline_digest=self.d_base, candidate_digest=self.d_cand
+            "staged", raw, baseline_digest=self.d_base, candidate_image=self.i_cand
         )
         self.assertFalse(ok)
         self.assertIn("does not match candidate digest", msg)
+
+    def test_validate_staged_rejects_other_repository(self):
+        raw = {
+            "status": {
+                "booted": {
+                    "image": {"image": "ghcr.io/projectbluefin/utah", "imageDigest": self.d_base}
+                },
+                "staged": {
+                    "image": {"image": "ghcr.io/example/other:testing", "imageDigest": self.d_cand}
+                },
+            }
+        }
+        ok, msg, _ = bootc_lifecycle.validate_phase_transition(
+            "staged", raw, baseline_digest=self.d_base, candidate_image=self.i_cand
+        )
+        self.assertFalse(ok)
+        self.assertIn("is not from candidate repository", msg)
+
+    def test_validate_staged_tag_candidate_matches_repository(self):
+        raw = {
+            "status": {
+                "booted": {
+                    "image": {"image": "ghcr.io/projectbluefin/utah:testing", "imageDigest": self.d_base}
+                },
+                "staged": {
+                    "image": {"image": "ghcr.io/projectbluefin/utah:stable", "imageDigest": self.d_cand}
+                },
+            }
+        }
+        ok, _, _ = bootc_lifecycle.validate_phase_transition(
+            "staged", raw, baseline_digest=self.d_base, candidate_image="ghcr.io/projectbluefin/utah:stable"
+        )
+        self.assertTrue(ok)
 
     def test_validate_upgraded_success(self):
         raw = {

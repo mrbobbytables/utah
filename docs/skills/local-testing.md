@@ -321,7 +321,7 @@ The older ISO branch's package pin and exclusions must not replace them.
 
 ### Bootc upgrade and rollback lifecycle harness
 
-`just lifecycle-test <disk-or-iso> <candidate-target-image>` runs
+`just lifecycle-test <candidate-target-image> [disk-or-iso] [baseline-image]` runs
 `iso/scripts/lifecycle-e2e.sh` and `scripts/bootc_lifecycle.py` to validate
 atomic lifecycle transitions between two immutable Utah digests in QEMU:
 baseline deployment verification, staging with atomic staging invariants
@@ -330,6 +330,15 @@ verification, rollback execution, and reboot verification returning to the
 baseline digest.
 Phase-keyed diagnostics (`evidence/lifecycle-*.json`, `lifecycle-summary.json`)
 and screendumps identify the active deployment and digest at every phase.
+
+The baseline image (default `ghcr.io/projectbluefin/utah:testing`, the target
+ref `just iso testing` builds with) is the ref a live ISO installs its offline
+payload under, and phase 1 fails unless the booted deployment tracks it. The
+candidate is what gets staged, so it has no default: with the `bootc` policy it
+must be a different ref from the baseline, since `bootc switch` to the ref
+already booted stages nothing. The staged slot is checked against that
+candidate, not against itself: it must come from the candidate's repository,
+and a digest-pinned candidate must stage exactly that digest.
 
 The default `bootc` policy stages the candidate with `bootc switch`, so the
 candidate may come from any repository. `UTAH_LIFECYCLE_POLICY=uupd` instead
@@ -347,7 +356,7 @@ account; its image format is detected before the overlay is created, so raw
 and qcow2 disks both work.
 
 ```bash
-just lifecycle-test output/utah-live.iso ghcr.io/projectbluefin/utah:testing
+just lifecycle-test ghcr.io/projectbluefin/utah@sha256:<candidate-digest>
 ```
 
 ```bash

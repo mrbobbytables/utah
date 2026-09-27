@@ -364,8 +364,11 @@ try-installed:
 # Defaults to the debug live ISO -- `just iso testing 1` -- because the harness
 # logs in over SSH as the `utahtest` account the installer provisions. The disk
 # from `just generate-bootable-image` has no such account and cannot be used.
-lifecycle-test disk_or_iso="output/utah-live.iso" candidate_image="ghcr.io/projectbluefin/utah:testing":
-    bash iso/scripts/lifecycle-e2e.sh "{{ disk_or_iso }}" "{{ candidate_image }}"
+# The ISO installs its payload as baseline_image, then the harness stages
+# candidate_image; the candidate has no default because staging the baseline
+# ref again is a no-op and would never exercise an upgrade.
+lifecycle-test candidate_image disk_or_iso="output/utah-live.iso" baseline_image="ghcr.io/projectbluefin/utah:testing":
+    bash iso/scripts/lifecycle-e2e.sh "{{ disk_or_iso }}" "{{ baseline_image }}" "{{ candidate_image }}"
 
 generate-build-tags base_name stream flavor kernel_pin build_number version event_name event_number:
     @echo "{{ stream }} {{ version }}"

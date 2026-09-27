@@ -126,6 +126,7 @@ def validate_phase_transition(
     status_data: str | dict[str, Any],
     baseline_digest: str | None = None,
     candidate_digest: str | None = None,
+    candidate_image: str | None = None,
 ) -> tuple[bool, str, dict[str, Any]]:
     """Validate lifecycle phase invariants against current bootc status."""
     deployments = parse_bootc_status(status_data)
@@ -158,12 +159,25 @@ def validate_phase_transition(
             )
         if not staged:
             return False, "No staged deployment found after upgrade command", diag
-        if not candidate_digest:
-            return False, "Candidate digest is required for staged phase validation", diag
-        if staged.digest != candidate_digest:
+        # The staged slot is what is under test, so the expectation must come
+        # from outside it: the image reference the harness asked bootc to stage.
+        if not candidate_image:
+            return False, "Candidate image is required for staged phase validation", diag
+        candidate_repo = image_repository(candidate_image)
+        staged_repo = image_repository(staged.image)
+        if staged_repo != candidate_repo:
             return (
                 False,
-                f"Staged digest '{staged.digest}' does not match candidate digest '{candidate_digest}'",
+                f"Staged image '{staged.image}' is not from candidate repository '{candidate_repo}'",
+                diag,
+            )
+        # A digest-pinned candidate names exactly one image, so the staged
+        # digest must be it; a tag is resolved by the registry at staging time.
+        _, pinned, pinned_digest = candidate_image.strip().partition("@")
+        if pinned and staged.digest != pinned_digest:
+            return (
+                False,
+                f"Staged digest '{staged.digest}' does not match candidate digest '{pinned_digest}'",
                 diag,
             )
         return True, f"Upgrade staged successfully with digest {staged.digest}", diag
@@ -308,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     p_val.add_argument("--status", required=True, help="Path to status JSON file or '-' for stdin")
     p_val.add_argument("--baseline-digest", help="Expected baseline image digest")
     p_val.add_argument("--candidate-digest", help="Expected candidate image digest")
+    p_val.add_argument("--candidate-image", help="Candidate image reference that was staged")
 
     # record-diagnostics
     p_diag = subparsers.add_parser("record-diagnostics", help="Record structured diagnostics")
@@ -367,6 +382,7 @@ def main(argv: list[str] | None = None) -> int:
             status_data=raw,
             baseline_digest=args.baseline_digest,
             candidate_digest=args.candidate_digest,
+            candidate_image=args.candidate_image,
         )
         if ok:
             print(f"PASS: {msg}")

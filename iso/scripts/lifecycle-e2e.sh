@@ -16,7 +16,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: lifecycle-e2e.sh <disk-or-iso> <candidate-target-image> [passphrase]
+Usage: lifecycle-e2e.sh <disk-or-iso> <baseline-image> <candidate-target-image> [passphrase]
 
 Arguments:
   disk-or-iso             Live debug ISO, or an already installed disk (.qcow2,
@@ -26,7 +26,15 @@ Arguments:
                           generate-bootable-image` provisions no such account,
                           so pass the debug ISO instead and let the install
                           phase create one.
-  candidate-target-image  Candidate image ref/digest to upgrade to (e.g. ghcr.io/projectbluefin/utah@sha256:...)
+  baseline-image          Image ref the baseline deployment tracks. A live ISO
+                          installs its offline payload under this ref, so it
+                          must be the target ref the ISO was built with (`just
+                          iso testing` uses ghcr.io/projectbluefin/utah:testing).
+                          Phase 1 fails unless the booted deployment tracks it.
+  candidate-target-image  Candidate image ref/digest to upgrade to (e.g. ghcr.io/projectbluefin/utah@sha256:...).
+                          With the default bootc policy it must differ from
+                          baseline-image: `bootc switch` to the ref already
+                          booted stages nothing.
   passphrase              LUKS passphrase if disk is encrypted (default: testpassphrase)
 
 Environment variables:
@@ -53,11 +61,18 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 DISK_OR_ISO="${1:-}"
-TARGET_IMAGE="${2:-}"
-PASSPHRASE="${3:-testpassphrase}"
+BASELINE_REF="${2:-}"
+TARGET_IMAGE="${3:-}"
+PASSPHRASE="${4:-testpassphrase}"
 
 if [[ -z "${DISK_OR_ISO}" ]]; then
     echo "ERROR: disk-or-iso path is required" >&2
+    usage >&2
+    exit 1
+fi
+
+if [[ -z "${BASELINE_REF}" ]]; then
+    echo "ERROR: baseline-image reference is required" >&2
     usage >&2
     exit 1
 fi
@@ -340,7 +355,7 @@ if [[ "${DISK_OR_ISO}" == *.iso ]]; then
     INSTALL_WORK="${UTAH_E2E_WORK:-${WORK}/install}"
     mkdir -p "${INSTALL_WORK}"
     UTAH_E2E_WORK="${INSTALL_WORK}" bash "${ROOT}/iso/scripts/luks-e2e.sh" \
-        "${DISK_OR_ISO}" "${TARGET_IMAGE}" "${PASSPHRASE}"
+        "${DISK_OR_ISO}" "${BASELINE_REF}" "${PASSPHRASE}"
     DISK_SOURCE="${INSTALL_WORK}/install.qcow2"
 else
     DISK_SOURCE="${DISK_OR_ISO}"
@@ -398,6 +413,8 @@ BASELINE_DIGEST="$(extract_digest "${WORK}/baseline-status.json" booted)"
 [[ -n "${BASELINE_DIGEST}" ]] || diagnose_failure "Could not extract baseline booted digest"
 BASELINE_IMAGE="$(extract_image "${WORK}/baseline-status.json" booted)"
 [[ -n "${BASELINE_IMAGE}" ]] || diagnose_failure "Could not extract baseline booted image reference"
+[[ "${BASELINE_IMAGE}" == "${BASELINE_REF}" ]] \
+    || diagnose_failure "Baseline deployment tracks '${BASELINE_IMAGE}', not the requested baseline image '${BASELINE_REF}'"
 ACTIVE_DIGEST="${BASELINE_DIGEST}"
 
 python3 "${ROOT}/scripts/bootc_lifecycle.py" validate-phase baseline \
@@ -458,7 +475,7 @@ ACTIVE_DIGEST="${CANDIDATE_DIGEST}"
 python3 "${ROOT}/scripts/bootc_lifecycle.py" validate-phase staged \
     --status "${WORK}/staged-status.json" \
     --baseline-digest "${BASELINE_DIGEST}" \
-    --candidate-digest "${CANDIDATE_DIGEST}" \
+    --candidate-image "${TARGET_IMAGE}" \
     || diagnose_failure "Staged deployment validation failed"
 
 python3 "${ROOT}/scripts/bootc_lifecycle.py" record-diagnostics \
