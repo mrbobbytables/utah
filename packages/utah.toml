@@ -99,6 +99,12 @@ mutter = "51"
 xdg-desktop-portal = "1"
 xdg-desktop-portal-gnome = "51"
 glibc-all-langpacks = "2"
+nautilus = "51"
+localsearch = "3"
+gvfs-mtp = "1"
+gvfs-afc = "1"
+gvfs-gphoto2 = "1"
+gnome-initial-setup = "51"
 
 [repositories]
 # Explicitly allowed runtime RPM repositories
@@ -132,6 +138,12 @@ packages = [
     "mutter",
     "xdg-desktop-portal",
     "xdg-desktop-portal-gnome",
+    "nautilus",
+    "localsearch",
+    "gvfs-mtp",
+    "gvfs-afc",
+    "gvfs-gphoto2",
+    "gnome-initial-setup",
     # Service packages from factory
     "flatpak",
     "fwupd",
@@ -151,7 +163,8 @@ packages = [
     "gnome-ponytail-daemon",
     "gnome-tweaks",
     "google-noto-sans-cjk-vf-fonts",
-    "grub2-efi-x64-cdboot",
+    # grub2-efi-x64-cdboot is deliberately not here: it moved to [unavailable]
+    # (#254), so it is not installed and cannot carry .bfin.
     "gum",
     "gvfs-nfs",
     "ibus-mozc",

@@ -116,9 +116,14 @@ directories DNF reads. An explicit `reposdir=` in either configuration file
 replaces that default list, matching DNF's semantics, and every directory it
 names is scanned instead. Any enabled Fedora repository (`fedora`,
 `fedora-updates`, etc.) or unapproved third-party repository causes the contract
-verification to fail immediately. `UTAH_POLICY_ROOT` re-roots the scan, which is
+verification to fail immediately. A repository counts as enabled unless its
+`enabled=` value is one DNF reads as false (`0`, `no`, `false`, `off`), so an
+unfamiliar spelling fails closed. `UTAH_POLICY_ROOT` re-roots the scan, which is
 how the unit tests attest a known filesystem rather than the DNF configuration
-of whatever machine runs them.
+of whatever machine runs them. The off-image `--check` pass over `packages/`
+skips only repository files that declare themselves builder-only with a
+`# builder-only: true` comment line (`packages/fedora-44.repo`); the runtime
+attestation never honours that marker.
 
 The pinned package image is an RPM repository, not a runtime dependency: its
 contents are copied into the image so the package transaction is reproducible
@@ -145,8 +150,11 @@ attributes and source provenance for every contract package:
    `firewalld`, `gcc`, `libxcrypt`, `make`, `openssh`, `rust-bootupd`) have no
    recipe and are pruned from its published repository, so they are excluded
    from `[factory]` and asserted absent by the tests.
-3. **Hummingbird release identity**: Packages provided by Hummingbird must carry
-   `.hum` release identity and cannot resolve from raw Fedora packages (`.fc`).
+3. **No raw Fedora packages**: Every contract package outside `[factory]` must
+   not resolve from raw Fedora (`.fc` without `.hum`). Outside the `[gnome]`
+   contract it is not required to carry `.hum`, so a package the factory starts
+   rebuilding does not fail the build; it only needs adding to `[factory]` to be
+   gated.
 4. **Build provenance retention**: The resolved package-origin and NEVRA report
    is written to `/usr/share/utah/package-origins.json` and
    `/usr/share/utah/package-origins.txt`, recording the exact NEVRA, epoch,

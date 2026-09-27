@@ -56,9 +56,23 @@ DEFAULT_REPOSDIRS: tuple[str, ...] = (
 )
 
 
+# The values DNF's boolean options accept as false (libdnf5 OptionBool: 0, no,
+# false, off; case-insensitive). Anything else counts as enabled, so a spelling
+# the allowlist does not recognise -- enabled=on, say -- fails closed instead of
+# hiding an active repository from the attestation.
+DNF_FALSE_VALUES = frozenset({"0", "no", "false", "off"})
+
+# The explicit opt-out a repository file under packages/ carries when it is
+# builder-only toolchain material (packages/fedora-44.repo), never shipped in
+# the runtime image. Matched as a whole comment line, the same way
+# install-packages.py matches its `# utah-install: true` marker, so the
+# exemption follows the file's declared role rather than its name.
+BUILDER_ONLY_MARKER = "# builder-only: true"
+
+
 def is_repo_enabled(enabled_val: str) -> bool:
-    """Normalize boolean repository enabled semantics according to DNF conventions."""
-    return enabled_val.strip().lower() in ("1", "true", "yes")
+    """Normalize repository enabled semantics, failing closed on unknown values."""
+    return enabled_val.strip().lower() not in DNF_FALSE_VALUES
 
 
 def section(path: Path, name: str) -> list[str]:
@@ -272,8 +286,12 @@ def verify_repository_policy(
             errors.append(f"Could not read repo file {repo_file}: {e}")
             continue
 
-        # In check mode off-image, builder-only repos exist in packages/ for kernel builder
-        if check_mode and "# builder-only: true" in file_text:
+        # packages/ also holds builder-only repositories (the kernel builder's
+        # Fedora toolchain). Off-image check mode skips them by their explicit
+        # marker; the runtime attestation never honours it.
+        if check_mode and any(
+            line.strip() == BUILDER_ONLY_MARKER for line in file_text.splitlines()
+        ):
             continue
 
         parser = configparser.ConfigParser(interpolation=None)
@@ -317,8 +335,9 @@ def resolve_reposdirs(
         return list(default_dirs)
     dirs: list[Path] = []
     for entry in entries:
-        path = Path(entry)
-        resolved = root / path.relative_to("/") if path.is_absolute() else Path(entry)
+        # DNF reads reposdir inside the installroot, so relative entries are
+        # resolved against the policy root too, never the verifier's cwd.
+        resolved = root / Path(entry).relative_to("/") if entry.startswith("/") else root / entry
         if resolved not in dirs:
             dirs.append(resolved)
     return dirs
