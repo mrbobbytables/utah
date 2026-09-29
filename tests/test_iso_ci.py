@@ -358,6 +358,22 @@ class RepeatBootIdempotencyTests(unittest.TestCase):
         docs = (ROOT / "docs/skills/local-testing.md").read_text()
         self.assertIn("UTAH_E2E_REPEAT_BOOT", docs)
 
+    def test_unlock_waits_for_the_guest_to_go_down(self):
+        """luks-unlock.py reads a static framebuffer as the Plymouth prompt.
+
+        A GNOME session being torn down is static too, so starting the unlock
+        immediately after `systemctl reboot` types the passphrase into the
+        live session and the real prompt then times out.
+        """
+        script = self.SCRIPT.read_text()
+        reboot_at = script.index("sudo_target 'systemctl reboot'")
+        unlock_at = script.index('"${ROOT}/iso/scripts/luks-unlock.py"', reboot_at)
+        between = script[reboot_at:unlock_at]
+        self.assertIn("reboot: Restarting system", between)
+        self.assertIn("ssh_target true", between)
+        self.assertNotIn("sleep 5", between)
+        self.assertIn("guest still reachable", between)
+
 
 class FirstBootUnitFailureTests(unittest.TestCase):
     """A first-boot check that cannot see a failed unit proves nothing.
@@ -429,6 +445,87 @@ class FirstBootUnitFailureTests(unittest.TestCase):
                 res = self.run_probe(state)
                 self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
                 self.assertIn("not activating/active", res.stdout)
+
+
+class SetupHookAggregationTests(unittest.TestCase):
+    """The ublue setup wrappers report only their last hook's status.
+
+    Upstream ublue-privileged-setup/ublue-user-setup run
+    `for script in dir/*; do bash "$script"; done` with neither `set -e` nor
+    status aggregation, so `ublue-user-setup || fail` catches a failure only in
+    99-privileged.sh. The harness therefore runs each hook itself.
+    """
+
+    SCRIPT = ROOT / "iso/scripts/luks-e2e.sh"
+
+    def runner(self):
+        script = self.SCRIPT.read_text()
+        start = script.index("\n", script.index("<<'RUNNER'")) + 1
+        return script[start:script.index("\nRUNNER\n", start)]
+
+    def write_hooks(self, hooks):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        hook_dir = Path(tmp.name)
+        for name, body in hooks.items():
+            path = hook_dir / name
+            path.write_text(body)
+            path.chmod(0o755)
+        return hook_dir
+
+    def run_runner(self, hook_dir):
+        return subprocess.run(["bash", "-c", self.runner(), "runner", str(hook_dir)],
+                              capture_output=True, text=True)
+
+    def test_a_failing_non_final_hook_fails_the_run(self):
+        hook_dir = self.write_hooks({
+            "10-tailscale.sh": "#!/bin/bash\nexit 1\n",
+            "99-flatpaks.sh": "#!/bin/bash\nexit 0\n",
+        })
+        res = self.run_runner(hook_dir)
+        self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+        self.assertIn("hook FAILED (exit 1)", res.stdout)
+        self.assertIn("10-tailscale.sh", res.stdout)
+
+    def test_all_passing_hooks_succeed(self):
+        hook_dir = self.write_hooks({
+            "10-tailscale.sh": "#!/bin/bash\nexit 0\n",
+            "99-flatpaks.sh": "#!/bin/bash\nexit 0\n",
+        })
+        res = self.run_runner(hook_dir)
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+        self.assertEqual(res.stdout.count("hook OK:"), 2)
+
+    def test_an_empty_hook_directory_is_a_failure(self):
+        res = self.run_runner(self.write_hooks({}))
+        self.assertEqual(res.returncode, 1, res.stdout + res.stderr)
+        self.assertIn("no hooks found", res.stdout)
+
+    def test_both_hook_directories_are_iterated_on_each_boot(self):
+        script = self.SCRIPT.read_text()
+        for mode in ("privileged", "user"):
+            with self.subTest(mode=mode):
+                var = f"${{{mode.upper()}_HOOK_DIR}}"
+                self.assertEqual(
+                    script.count(f'run_setup_hooks "first boot" "{var}" {mode}'), 1)
+                self.assertEqual(
+                    script.count(f'run_setup_hooks "repeat boot" "{var}" {mode}'), 1)
+
+
+class FlatpakNukeFedoraUnitTests(unittest.TestCase):
+    """`-` prefixes already ignore the missing-remote exit 1.
+
+    A retained SuccessExitStatus=1 does nothing for those lines and masks a
+    genuine exit 1 from the trailing `touch`.
+    """
+
+    def test_no_redundant_success_exit_status(self):
+        unit_text = (
+            ROOT / "system_files/shared/usr/lib/systemd/system/flatpak-nuke-fedora.service"
+        ).read_text()
+        directives = [line for line in unit_text.splitlines()
+                      if line.startswith("SuccessExitStatus")]
+        self.assertEqual(directives, [])
 
 
 class FastfetchOcrGateTests(unittest.TestCase):

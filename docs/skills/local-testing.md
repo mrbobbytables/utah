@@ -281,8 +281,11 @@ terminal overlay, preventing duplicate verification evidence (#240). CI sets
 `UTAH_E2E_REQUIRE_FASTFETCH=1` to require OCR of its completion marker and
 kernel output, and `UTAH_E2E_REQUIRE_SCREENSHOTS=1` to reject missing PNGs.
 The repeat-boot check reboots the installed disk after the first-boot checks
-and re-runs `ublue-privileged-setup`, `ublue-user-setup` and the failed-unit
-scan. It is the only check proving first-boot operations are idempotent, but
+and re-runs the failed-unit scan, `ublue-privileged-setup`, `ublue-user-setup`
+and — because those wrappers report only their last hook's status — every hook
+in `privileged-setup.hooks.d` and `user-setup.hooks.d` individually, failing on
+any non-zero status. It is the only check proving first-boot operations are
+idempotent, but
 it adds a second LUKS unlock and graphical boot (roughly ten minutes) to every
 flavor's run, so it is off by default everywhere, CI included. Set
 `UTAH_E2E_REPEAT_BOOT=1` to run it:

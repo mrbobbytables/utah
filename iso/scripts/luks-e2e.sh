@@ -922,15 +922,75 @@ else
     echo "  tailscale binary missing: deferred state confirmed"
 fi
 
-# 6. Privileged and user setup execution
+# 6. Privileged and user setup execution.
+#
+# Upstream's ublue-privileged-setup and ublue-user-setup run
+# `for script in dir/*; do bash "$script"; done` with neither `set -e` nor any
+# status aggregation, so their exit status only reflects the last hook: a
+# failure in 10-tailscale.sh, 11-framework-ucsi-workaround.sh, 20-home-labels.sh,
+# 12-gnupg.sh or 20-framework.sh is invisible from the wrapper. Run the shipped
+# wrappers, then run every hook individually and fail on any non-zero status.
+HOOK_RUNNER_REMOTE=/tmp/utah-run-setup-hooks.sh
+PRIVILEGED_HOOK_DIR=/usr/share/ublue-os/privileged-setup.hooks.d
+USER_HOOK_DIR=/usr/share/ublue-os/user-setup.hooks.d
+
+install_hook_runner() {
+    if ! ssh_target "cat > ${HOOK_RUNNER_REMOTE} && chmod +x ${HOOK_RUNNER_REMOTE}" <<'RUNNER'
+#!/usr/bin/bash
+# Run every hook in a ublue setup hooks directory and report each status, so a
+# failure anywhere in the directory - not only in the last hook - is fatal.
+dir="$1"
+rc=0
+ran=0
+shopt -s nullglob
+for hook in "${dir}"/*; do
+    [[ -f "${hook}" ]] || continue
+    ran=1
+    if bash "${hook}"; then
+        echo "hook OK: ${hook}"
+    else
+        status=$?
+        echo "hook FAILED (exit ${status}): ${hook}"
+        rc=1
+    fi
+done
+if [[ "${ran}" -eq 0 ]]; then
+    echo "no hooks found in ${dir}"
+    rc=1
+fi
+exit "${rc}"
+RUNNER
+    then
+        fail "could not install the hook runner on the installed system"
+    fi
+}
+
+run_setup_hooks() {
+    local label="$1" dir="$2" mode="$3" out="" status=0
+    if [[ "${mode}" == "privileged" ]]; then
+        out="$(sudo_target "/usr/bin/bash ${HOOK_RUNNER_REMOTE} ${dir}" 2>&1)" || status=$?
+    else
+        out="$(ssh_target "/usr/bin/bash ${HOOK_RUNNER_REMOTE} ${dir}" 2>&1)" || status=$?
+    fi
+    echo "${out}" | sed -n 's/^hook /  hook /p;s/^no hooks found/  no hooks found/p'
+    if [[ ${status} -ne 0 ]]; then
+        echo "${out}" >&2
+        fail "${label}: at least one hook in ${dir} exited non-zero"
+    fi
+}
+
 echo "Exercising ublue-privileged-setup and ublue-user-setup..."
+install_hook_runner
+
 sudo_target '/usr/bin/ublue-privileged-setup' \
     || fail "ublue-privileged-setup execution failed"
-echo "  ublue-privileged-setup: OK"
+run_setup_hooks "first boot" "${PRIVILEGED_HOOK_DIR}" privileged
+echo "  ublue-privileged-setup: OK (every privileged hook exited 0)"
 
 ssh_target '/usr/bin/ublue-user-setup' \
     || fail "ublue-user-setup execution failed"
-echo "  ublue-user-setup: OK"
+run_setup_hooks "first boot" "${USER_HOOK_DIR}" user
+echo "  ublue-user-setup: OK (every user hook exited 0)"
 
 # 7. Repeat boot idempotency. This is the only check that proves first-boot
 # operations are idempotent (issue #19), but it adds a second LUKS unlock and
@@ -943,7 +1003,22 @@ if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
     : > "${SERIAL_INSTALLED}"
 
     sudo_target 'systemctl reboot' 2>/dev/null || true
-    sleep 5
+
+    # luks-unlock.py treats a framebuffer that is unchanged for two polls as
+    # the Plymouth passphrase prompt, and a GNOME session being torn down is
+    # static too. Sending the passphrase into the dying session loses it and
+    # lets the real prompt time out, so wait for the guest to go down first.
+    guest_down=0
+    for i in $(seq 1 60); do
+        if grep -qa "reboot: Restarting system" "${SERIAL_INSTALLED}" 2>/dev/null; then
+            guest_down=1; echo "  serial: guest restarting"; break
+        fi
+        if ! ssh_target true 2>/dev/null; then
+            guest_down=1; echo "  ssh: guest is no longer reachable"; break
+        fi
+        sleep 2
+    done
+    (( guest_down )) || fail "repeat boot: guest still reachable 2m after 'systemctl reboot'"
 
     status=0
     python3 "${ROOT}/iso/scripts/luks-unlock.py" qemu \
@@ -976,8 +1051,11 @@ if [[ "${UTAH_E2E_REPEAT_BOOT:-0}" == "1" ]]; then
         fail "repeat boot completed with failed setup units: ${failed_repeat}"
     fi
 
+    install_hook_runner
     sudo_target '/usr/bin/ublue-privileged-setup' || fail "repeat boot: ublue-privileged-setup failed"
+    run_setup_hooks "repeat boot" "${PRIVILEGED_HOOK_DIR}" privileged
     ssh_target '/usr/bin/ublue-user-setup' || fail "repeat boot: ublue-user-setup failed"
+    run_setup_hooks "repeat boot" "${USER_HOOK_DIR}" user
     repeat_boot_verified=1
     echo "  repeat boot: idempotent and clean"
 fi
@@ -989,8 +1067,9 @@ echo "Screenshots: ${SHOTS}"
 
 if (( repeat_boot_verified )); then
     repeat_boot_record="9. The installed disk boots a second time, reaching the graphical target
-   with no failed setup units, and \`ublue-privileged-setup\` and
-   \`ublue-user-setup\` re-run cleanly — first-boot operations are idempotent.
+   with no failed setup units, and every hook in
+   \`privileged-setup.hooks.d\` and \`user-setup.hooks.d\` re-runs with exit
+   status 0 — first-boot operations are idempotent.
 "
 else
     repeat_boot_record="

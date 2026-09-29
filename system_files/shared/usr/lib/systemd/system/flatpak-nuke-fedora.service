@@ -9,13 +9,13 @@ Before=flatpak-add-fedora-repos.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/usr/bin/mkdir -p /var/lib/flatpak
+# A missing remote makes flatpak exit 1; the `-` prefix ignores that, so no
+# SuccessExitStatus= is needed (and one would mask a real `touch` failure).
 ExecStart=-/usr/bin/flatpak remote-delete --force --system fedora
 ExecStart=-/usr/bin/flatpak remote-delete --force --system fedora-testing
 # Make sure even if flatpak-add-fedora-repos.service  exists, it
 # won't run.
 ExecStart=/usr/bin/touch /var/lib/flatpak/.fedora-initialized
-# Flatpak will fail if the remote doesn't exist, but we don't mind
-SuccessExitStatus=1
 
 [Install]
 WantedBy=multi-user.target
