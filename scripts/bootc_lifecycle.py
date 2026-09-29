@@ -180,6 +180,15 @@ def validate_phase_transition(
                 f"Staged digest '{staged.digest}' does not match candidate digest '{pinned_digest}'",
                 diag,
             )
+        # bootc switch only stops early when the ref is unchanged; a different
+        # ref that resolves to the booted digest is still staged, and every
+        # later phase would then pass without anything having been upgraded.
+        if baseline_digest and staged.digest == baseline_digest:
+            return (
+                False,
+                f"Staged digest {staged.digest} is the baseline digest; nothing was upgraded",
+                diag,
+            )
         return True, f"Upgrade staged successfully with digest {staged.digest}", diag
 
     elif phase == "upgraded":

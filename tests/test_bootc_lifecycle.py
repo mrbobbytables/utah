@@ -220,6 +220,25 @@ class TestLifecyclePhaseTransitions(unittest.TestCase):
         )
         self.assertTrue(ok)
 
+    def test_validate_staged_rejects_baseline_digest(self):
+        # A different ref that resolves to the booted image is still staged by
+        # bootc switch; staging it must not count as an upgrade.
+        raw = {
+            "status": {
+                "booted": {
+                    "image": {"image": "ghcr.io/projectbluefin/utah:testing", "imageDigest": self.d_base}
+                },
+                "staged": {
+                    "image": {"image": "ghcr.io/projectbluefin/utah:stable", "imageDigest": self.d_base}
+                },
+            }
+        }
+        ok, msg, _ = bootc_lifecycle.validate_phase_transition(
+            "staged", raw, baseline_digest=self.d_base, candidate_image="ghcr.io/projectbluefin/utah:stable"
+        )
+        self.assertFalse(ok)
+        self.assertIn("is the baseline digest", msg)
+
     def test_validate_upgraded_success(self):
         raw = {
             "status": {
