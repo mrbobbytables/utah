@@ -94,13 +94,16 @@ def write_repos(directory: Path) -> Path:
     repos_dir = directory / "repos"
     repos_dir.mkdir(parents=True, exist_ok=True)
     # Order: priority 5 before priority 50. Unmarked repo should not be enabled.
-    (repos_dir / "low-prio.repo").write_text(
+    # Filenames are deliberately inverted relative to priority so that the
+    # alphabetical glob order (aa-* then zz-*) disagrees with the expected
+    # priority order; dropping the sort in install_repos must fail the test.
+    (repos_dir / "aa-low-prio.repo").write_text(
         "[low-prio-repo]\n# utah-install: true\npriority=50\n"
     )
-    (repos_dir / "high-prio.repo").write_text(
+    (repos_dir / "zz-high-prio.repo").write_text(
         "[high-prio-repo]\n# utah-install: true\npriority=5\n"
     )
-    (repos_dir / "unmarked.repo").write_text(
+    (repos_dir / "mm-unmarked.repo").write_text(
         "[unmarked-repo]\npriority=1\n"
     )
     return repos_dir
