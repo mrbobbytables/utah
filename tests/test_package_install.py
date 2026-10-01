@@ -241,6 +241,8 @@ class PackageInstallPathTests(unittest.TestCase):
                 patch.object(installer, "fedora_major", return_value=major), \
                 patch.object(installer, "run", side_effect=fake_run), \
                 patch.object(installer, "installed", side_effect=fake_installed), \
+                patch.object(installer, "swap_distro_logos", return_value=0), \
+                patch.object(installer, "repo_evr", return_value=None), \
                 patch.object(installer.sys, "argv", argv), \
                 redirect_stdout(stdout):
             code = installer.main()
