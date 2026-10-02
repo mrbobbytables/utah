@@ -146,6 +146,15 @@ ssh_target() {
         -p "${SSH_PORT}" "${TEST_USER}@127.0.0.1" "$@"
 }
 
+# Supply sudo's password on stdin: the installed test account is in wheel,
+# not NOPASSWD, and SSH deliberately runs without a tty. Quote every argument
+# before sending it through the guest's shell; never put the password there.
+ssh_target_sudo() {
+    local command
+    printf -v command '%q ' "$@"
+    printf '%s\n' "${TEST_PASSWORD}" | ssh_target "sudo -S -p '' -- ${command}"
+}
+
 lifecycle_helper() {
     python3 "${ROOT}/scripts/bootc_lifecycle.py" "$@"
 }
@@ -217,8 +226,8 @@ diagnose_failure() {
     # Query journal and bootc status if SSH is available
     if ssh_target true 2>/dev/null; then
         echo "--- active bootc status ---" >&2
-        ssh_target 'sudo bootc status' >&2 2>/dev/null || true
-        ssh_target 'sudo bootc status --format=json' > "${WORK}/failure-status.json" 2>/dev/null || true
+        ssh_target_sudo bootc status >&2 2>/dev/null || true
+        ssh_target_sudo bootc status --format=json > "${WORK}/failure-status.json" 2>/dev/null || true
     fi
 
     # Record structured failure diagnostics
@@ -279,12 +288,11 @@ wait_for_boot() {
 reboot_guest() {
     local label="$1"
     : > "${SERIAL_LOG}"
-    # `systemctl reboot` tears sshd down before the client sees a clean exit,
-    # so a non-zero ssh status is the normal case here and must not be read as
-    # a refused reboot. A QEMU `system_reset` during shutdown would skip
-    # ostree-finalize-staged.service, which commits the staged deployment, and
-    # the next phase would silently boot the old image.
-    ssh_target 'sudo systemctl reboot' >/dev/null 2>&1 || true
+    # Ask systemd to enqueue a clean reboot without waiting for sshd to stop.
+    # A denied request must fail here, not become a hard reset that skips
+    # ostree-finalize-staged.service and loses the staged deployment.
+    ssh_target_sudo systemctl reboot --no-block \
+        || diagnose_failure "Clean reboot request failed during ${label}"
 
     local i
     for (( i=0; i<180; i+=2 )); do
@@ -299,11 +307,7 @@ reboot_guest() {
         sleep 2
     done
 
-    # Still serving SSH and still silent on the console: the reboot request
-    # never took effect, so no shutdown is in flight to interrupt and a reset
-    # cannot discard a staged deployment.
-    echo "Warning: guest ignored 'systemctl reboot' during ${label}; issuing QEMU reset" >&2
-    monitor "${MONITOR}" "system_reset" || true
+    diagnose_failure "Guest did not begin the clean reboot during ${label}"
 }
 
 verify_desktop_and_identity() {
@@ -330,11 +334,11 @@ verify_desktop_and_identity() {
     fi
     echo "  desktop: gdm.service and gnome-shell active"
 
-    # 3. Identity checks from /etc/os-release
-    local os_id os_name
-    os_id="$(ssh_target 'grep -E "^ID=" /etc/os-release' | cut -d= -f2 | tr -d '"' || true)"
-    os_name="$(ssh_target 'grep -E "^PRETTY_NAME=" /etc/os-release' | cut -d= -f2 | tr -d '"' || true)"
-    echo "  identity: ${os_name:-$os_id}"
+    # 3. Enforce the Utah os-release identity, not just a readable file.
+    # Keep these values aligned with contracts/bluefin-desktop.toml.
+    ssh_target '. /etc/os-release; test "${ID:-}" = hummingbird && test "${NAME:-}" = Utah && printf "%s\n" "${PRETTY_NAME:-}" | grep -Eq "^Utah \\(Version: .+\\)$"' \
+        || diagnose_failure "os-release does not identify Utah during ${label}"
+    echo "  identity: Utah on Hummingbird"
 
     # 4. Check for failed units
     local failed_units
@@ -406,7 +410,7 @@ wait_for_boot "Phase 1 (Baseline)"
 verify_desktop_and_identity "baseline"
 shot baseline-desktop "${MONITOR}"
 
-ssh_target 'sudo bootc status --format=json' > "${WORK}/baseline-status.json" \
+ssh_target_sudo bootc status --format=json > "${WORK}/baseline-status.json" \
     || diagnose_failure "Failed to query bootc status from baseline deployment"
 
 BASELINE_DIGEST="$(extract_digest "${WORK}/baseline-status.json" booted)"
@@ -454,18 +458,18 @@ if [[ "${POLICY}" == "uupd" ]]; then
 
     # Run the shipped unit rather than the binary directly: the unit is what the
     # timer triggers in production, including its distrobox module override.
-    ssh_target 'sudo systemctl start uupd.service' \
+    ssh_target_sudo systemctl start uupd.service \
         || diagnose_failure "uupd.service failed while staging the candidate upgrade"
     if ssh_target 'systemctl is-failed uupd.service >/dev/null 2>&1'; then
         diagnose_failure "uupd.service entered a failed state while staging the candidate upgrade"
     fi
 else
     echo "Executing bootc switch to candidate target..."
-    ssh_target "sudo bootc switch '${TARGET_IMAGE}'" \
+    ssh_target_sudo bootc switch "${TARGET_IMAGE}" \
         || diagnose_failure "bootc switch command failed"
 fi
 
-ssh_target 'sudo bootc status --format=json' > "${WORK}/staged-status.json" \
+ssh_target_sudo bootc status --format=json > "${WORK}/staged-status.json" \
     || diagnose_failure "Failed to query bootc status after staging upgrade"
 
 CANDIDATE_DIGEST="$(extract_digest "${WORK}/staged-status.json" staged)"
@@ -501,7 +505,7 @@ wait_for_boot "Phase 3 (Upgraded)"
 verify_desktop_and_identity "upgraded"
 shot upgraded-desktop "${MONITOR}"
 
-ssh_target 'sudo bootc status --format=json' > "${WORK}/upgraded-status.json" \
+ssh_target_sudo bootc status --format=json > "${WORK}/upgraded-status.json" \
     || diagnose_failure "Failed to query bootc status on upgraded deployment"
 
 UPGRADED_DIGEST="$(extract_digest "${WORK}/upgraded-status.json" booted)"
@@ -528,7 +532,7 @@ ACTIVE_DEPLOYMENT="rollback"
 EXPECTED_DIGEST="${BASELINE_DIGEST}"
 echo "=== Phase 4/5: Rollback to Previous Deployment ==="
 echo "Executing bootc rollback inside guest..."
-ssh_target 'sudo bootc rollback' \
+ssh_target_sudo bootc rollback \
     || diagnose_failure "bootc rollback command failed"
 
 reboot_guest "Phase 4 (Rollback)"
@@ -540,7 +544,7 @@ wait_for_boot "Phase 4 (Rollback)"
 verify_desktop_and_identity "rollback"
 shot rollback-desktop "${MONITOR}"
 
-ssh_target 'sudo bootc status --format=json' > "${WORK}/rollback-status.json" \
+ssh_target_sudo bootc status --format=json > "${WORK}/rollback-status.json" \
     || diagnose_failure "Failed to query bootc status after rollback"
 
 RESTORED_DIGEST="$(extract_digest "${WORK}/rollback-status.json" booted)"

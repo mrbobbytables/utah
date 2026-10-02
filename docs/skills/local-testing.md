@@ -176,7 +176,8 @@ Production live boot entries configure:
 
 ### Secure Boot strategy
 
-- **Live ISO bootloader**: The live image installs `systemd-boot-unsigned`.
+- **Live ISO bootloader**: The image carries `systemd-boot-unsigned`, which the
+  live ISO boots from.
   On hardware with Microsoft UEFI Secure Boot enabled, firmware will reject the
   unsigned EFI loader unless Secure Boot is temporarily disabled in UEFI setup.
   Production releases will incorporate Fedora's signed shim (`shimx64.efi`) and
@@ -272,6 +273,15 @@ unprivileged test user.
 Read the recipe and script prerequisites before running it: it creates test
 accounts and requires local QEMU/KVM access, not a production installation.
 
+The installed-boot gate also checks `/var/lib/logrotate` before starting
+`logrotate.service`, then requires a nonempty `logrotate.status` state file.
+Do not create the directory in the test: `scripts/clean-stage.sh` removes
+`/var/lib` during composition, so writable service state must be recreated at
+boot by a rule shipped under `system_files/shared/usr/lib/tmpfiles.d/`.
+`utah-logrotate.conf` supplies the root-owned directory for logrotate (#386).
+A build-time `mkdir` or a clean bootc lint result alone does not prove that
+service state exists on a fresh installed system.
+
 Passing runs refresh `docs/verification/README.md`, its screenshots, and the
 delimited verification block in the root README. These are historical local
 test records, not proof that the current commit passed CI. The harness gates
@@ -354,6 +364,14 @@ The disk from `just generate-bootable-image` has no such account and cannot be
 used directly. An installed disk may be passed instead when it carries that
 account; its image format is detected before the overlay is created, so raw
 and qcow2 disks both work.
+
+All privileged guest steps feed the test password to `sudo -S` over SSH;
+membership in `wheel` alone does not allow passwordless, non-tty sudo. Clean
+reboots use `systemctl reboot --no-block` and fail with diagnostics if the
+request is rejected or never starts; never hard-reset a staged deployment.
+Every desktop milestone also requires `/etc/os-release` to identify
+`ID=hummingbird`, `NAME=Utah`, and `PRETTY_NAME=Utah (Version: ...)`, matching
+the desktop contract. A readable os-release file is not identity proof.
 
 ```bash
 just lifecycle-test ghcr.io/projectbluefin/utah@sha256:<candidate-digest>
