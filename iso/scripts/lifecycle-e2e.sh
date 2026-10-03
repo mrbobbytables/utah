@@ -307,28 +307,38 @@ wait_for_boot() {
 }
 
 reboot_guest() {
-    local label="$1"
+    local label="$1" request_rc=0 connection_down=0 shutdown_seen=0 i
     : > "${SERIAL_LOG}"
-    # Ask systemd to enqueue a clean reboot without waiting for sshd to stop.
-    # A denied request must fail here, not become a hard reset that skips
-    # ostree-finalize-staged.service and loses the staged deployment.
-    ssh_target_sudo systemctl reboot --no-block \
-        || diagnose_failure "Clean reboot request failed during ${label}"
+    # systemd may stop sshd before SSH reports the successful reboot request.
+    # Remote command/sudo failures are not transport teardown: fail those
+    # immediately. Exit 255 alone proves nothing; require fresh shutdown
+    # evidence and observed SSH loss before accepting that transport result.
+    if ssh_target_sudo systemctl reboot --no-block; then
+        request_rc=0
+    else
+        request_rc=$?
+        if (( request_rc != 255 )); then
+            diagnose_failure "Clean reboot request failed (exit ${request_rc}) during ${label}"
+        fi
+    fi
 
-    local i
     for (( i=0; i<180; i+=2 )); do
-        # Serial output after truncation means the guest is already shutting
-        # down or coming back up; either way the reboot was accepted.
-        if grep -qaE 'reboot: |Linux version |Reached target|systemd\[1\]' "${SERIAL_LOG}" 2>/dev/null; then
-            return 0
+        if grep -qaE 'Stopping ostree-finalize-staged\.service|Stopped target sysinit\.target|Reached target (shutdown|reboot)\.target|systemd-shutdown|reboot: Restarting system' "${SERIAL_LOG}" 2>/dev/null; then
+            shutdown_seen=1
         fi
         if ! ssh_target true 2>/dev/null; then
+            connection_down=1
+        fi
+        if (( connection_down && (request_rc == 0 || shutdown_seen) )); then
+            echo "  clean reboot observed: SSH disconnected (request exit ${request_rc})"
+            # The following unlock/graphical/digest gates must prove the new
+            # boot. Never use QEMU system_reset while finalization is in flight.
             return 0
         fi
         sleep 2
     done
 
-    diagnose_failure "Guest did not begin the clean reboot during ${label}"
+    diagnose_failure "Clean reboot was not observed during ${label} (request exit ${request_rc}, SSH down ${connection_down}, shutdown evidence ${shutdown_seen})"
 }
 
 verify_desktop_and_identity() {

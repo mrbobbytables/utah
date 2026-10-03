@@ -367,8 +367,13 @@ and qcow2 disks both work.
 
 All privileged guest steps feed the test password to `sudo -S` over SSH;
 membership in `wheel` alone does not allow passwordless, non-tty sudo. Clean
-reboots use `systemctl reboot --no-block` and fail with diagnostics if the
-request is rejected or never starts; never hard-reset a staged deployment.
+reboots use `systemctl reboot --no-block`. A non-transport sudo/reboot failure
+fails immediately; SSH exit 255 is accepted only with fresh serial shutdown
+evidence and an observed disconnected SSH session. A successful request also
+requires SSH to go down before the next boot gates run. Unlock, graphical
+login and digest checks then prove the new deployment actually booted; never
+hard-reset a staged deployment. QEMU runs without `-no-reboot` and uses its
+normal guest-reboot reset action, retaining the same disk and firmware state.
 Every desktop milestone also requires `/etc/os-release` to identify
 `ID=hummingbird`, `NAME=Utah`, and `PRETTY_NAME=Utah (Version: ...)`, matching
 the desktop contract. A readable os-release file is not identity proof.
