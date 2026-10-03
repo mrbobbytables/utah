@@ -373,6 +373,14 @@ Every desktop milestone also requires `/etc/os-release` to identify
 `ID=hummingbird`, `NAME=Utah`, and `PRETTY_NAME=Utah (Version: ...)`, matching
 the desktop contract. A readable os-release file is not identity proof.
 
+After each baseline, upgraded and rollback boot, the harness enters the
+test account through GDM with QEMU monitor key events, using the same
+single-account greeter/password flow as `luks-e2e.sh`, and waits for that
+user's GNOME Shell before taking desktop evidence. An SSH connection or
+active GDM service alone does not establish a graphical user session.
+The disposable disk must offer the test account selected at the greeter;
+this does not enable autologin or alter the published image's login policy.
+
 ```bash
 just lifecycle-test ghcr.io/projectbluefin/utah@sha256:<candidate-digest>
 ```

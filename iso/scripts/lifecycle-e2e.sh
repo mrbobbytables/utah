@@ -181,6 +181,27 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
 PY
 }
 
+# Type at the GDM greeter through the monitor, as luks-e2e.sh does. SSH login
+# alone starts no graphical session, and every reboot returns to the greeter.
+send_keys() {
+    local sock="$1" text="$2" ch key i
+    for (( i=0; i<${#text}; i++ )); do
+        ch="${text:i:1}"
+        case "${ch}" in
+            [a-z0-9]) key="${ch}" ;;
+            [A-Z]) key="shift-$(printf '%s' "${ch}" | tr '[:upper:]' '[:lower:]')" ;;
+            "-") key="minus" ;;
+            "_") key="shift-minus" ;;
+            ".") key="dot" ;;
+            " ") key="spc" ;;
+            *) return 1 ;;
+        esac
+        monitor "${sock}" "sendkey ${key}" || return 1
+        sleep 0.05
+    done
+    monitor "${sock}" "sendkey ret"
+}
+
 shot() {
     local label="$1" sock="$2"
     local ppm="${SHOTS}/${label}.ppm" png="${SHOTS}/${label}.png"
@@ -320,9 +341,21 @@ verify_desktop_and_identity() {
     ssh_target 'systemctl is-active gdm.service' | grep -qx active \
         || diagnose_failure "gdm.service is not active during ${label}"
 
-    # 2. GNOME Shell running
+    # 2. Enter the graphical session, not merely the SSH session. The disposable
+    # installed disk offers its single test account selected at GDM: Enter
+    # opens the password field, then the same monitor key path as luks-e2e.sh
+    # submits the password. Leave an already-running session untouched.
+    if ! ssh_target "pgrep -u ${TEST_USER} -x gnome-shell >/dev/null" 2>/dev/null; then
+        shot "${label}-greeter" "${MONITOR}"
+        echo "Logging in at the greeter as ${TEST_USER} (${label})..."
+        monitor "${MONITOR}" "sendkey ret" \
+            || diagnose_failure "Could not select the GDM test account during ${label}"
+        sleep 3
+        send_keys "${MONITOR}" "${TEST_PASSWORD}" \
+            || diagnose_failure "Could not submit the GDM test password during ${label}"
+    fi
     local shell_active=0
-    for _ in $(seq 1 12); do
+    for _ in $(seq 1 48); do
         if ssh_target "pgrep -u ${TEST_USER} -x gnome-shell >/dev/null" 2>/dev/null; then
             shell_active=1
             break
@@ -330,7 +363,8 @@ verify_desktop_and_identity() {
         sleep 5
     done
     if (( ! shell_active )); then
-        diagnose_failure "gnome-shell is not running for ${TEST_USER} during ${label}"
+        ssh_target 'loginctl list-sessions --no-legend' >&2 2>/dev/null || true
+        diagnose_failure "gnome-shell is not running for ${TEST_USER} after GDM login during ${label}"
     fi
     echo "  desktop: gdm.service and gnome-shell active"
 
