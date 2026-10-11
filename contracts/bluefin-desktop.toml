@@ -83,12 +83,14 @@ files = [
   "/etc/dconf/db/distro.d/02-bluefin-keybindings",
   "/etc/dconf/db/distro.d/03-bluefin-ptyxis-palette",
   "/etc/dconf/db/distro.d/04-bluefin-custom-command-menu",
+  "/etc/dconf/db/distro.d/08-dakota-extension-defaults",
   "/etc/dconf/db/distro.d/locks/01-bluefin-locked-settings",
   # GDM greeter logo. GDM uses its own "gdm" dconf profile (provided by the
   # gdm RPM at /etc/dconf/profile/gdm); without this keyfile gnome-shell
   # falls back to /usr/share/pixmaps/fedora-gdm-logo.png from fedora-logos,
   # and the login screen shows the Fedora wordmark instead of Bluefin (#378).
   "/etc/dconf/db/gdm.d/01-bluefin-gdm-logo",
+  "/usr/share/glib-2.0/schemas/zz3-bluefin-unsupported-stuff.gschema.override",
   # systemd-remount-fs.service.d/10-utah-composefs-skip.conf. On the composefs
   # image / is mounted read-only and the upstream unit unconditionally tries
   # to remount it read-write, fails with "overlay: No changes allowed in
@@ -118,6 +120,14 @@ files = [
   "Bazaar App Store",
   "docs.projectbluefin.io",
   "menuicon-setting='ublue-logo-symbolic'",
+]
+"/etc/dconf/db/distro.d/08-dakota-extension-defaults" = [
+  "show-indicator=false",
+  "layouts-json=",
+]
+"/usr/share/glib-2.0/schemas/zz3-bluefin-unsupported-stuff.gschema.override" = [
+  "disable-extension-version-validation=true",
+  "tilingshell@ferrarodomenico.com",
 ]
 "/etc/dconf/db/distro.d/02-bluefin-keybindings" = [
   "xdg-terminal-exec",
