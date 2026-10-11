@@ -252,8 +252,6 @@ updates by opening or updating a review PR with old/new commits and each
 extension's declared GNOME Shell versions. Its contract-only check verifies
 source metadata; it does not build an image or run the installed extension
 verifier. A full image build must verify the proposed pins before merge, and
-the workflow never auto-merges. Edit `.gitmodules` directly when changing a
-source or its tracked branch. Search Light was dropped: its shader calls
 `set_shader_source` (removed in GNOME 51), failing ISO tests.
 
 `scripts/verify-gnome-extensions.py` asserts every one declares GNOME 51 in
