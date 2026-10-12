@@ -252,7 +252,7 @@ Shell versions. Its contract-only check validates source metadata; it does not
 build an image or run the installed extension verifier. A full image build
 must verify proposed pins before merge. Edit `.gitmodules` directly for source
 URL or tracked-branch changes; automation only advances existing pins.
-Search Light's `set_shader_source` call broke ISO tests after GNOME 51 removed it.
+Search Light was dropped: GNOME 51 removed `set_shader_source`, which its shader code calls, so it failed ISO tests.
 
 `scripts/verify-gnome-extensions.py` asserts every one declares GNOME 51 in
 its `metadata.json`. It runs in two modes from the same script:
