@@ -246,13 +246,13 @@ for the live image's own `installer-local` remote.
 
 Bluefin's GNOME extension submodules are retained with their normal build
 step. `.gitmodules` pins all 16 extension trees by URL and branch under
-`system_files/shared/usr/share/gnome-shell/extensions/`. The weekly
-`.github/workflows/update-gnome-extensions.yml` workflow proposes submodule
-updates by opening or updating a review PR with old/new commits and each
-extension's declared GNOME Shell versions. Its contract-only check verifies
-source metadata; it does not build an image or run the installed extension
-verifier. A full image build must verify the proposed pins before merge, and
-`set_shader_source` (removed in GNOME 51), failing ISO tests.
+The weekly `.github/workflows/update-gnome-extensions.yml` workflow opens or
+updates review PRs with old/new commits and each extension's declared GNOME
+Shell versions. Its contract-only check validates source metadata; it does not
+build an image or run the installed extension verifier. A full image build
+must verify proposed pins before merge. Edit `.gitmodules` directly for source
+URL or tracked-branch changes; automation only advances existing pins.
+Search Light's `set_shader_source` call broke ISO tests after GNOME 51 removed it.
 
 `scripts/verify-gnome-extensions.py` asserts every one declares GNOME 51 in
 its `metadata.json`. It runs in two modes from the same script:
