@@ -86,9 +86,27 @@ the 6 GiB `ISO_MAX_GB` default (override per-run with `UTAH_ISO_MAX_GB`) once
 the ISO is written. Historical post-fix E2E run `35469913325` measured 3.9G
 (utah), 4.6G (gaming), 5.2G (nvidia), and 5.3G (nvidia-gaming). Diagnostic
 run `38175242606` measured 4.7G, 5.5G, 6.0G, and 6.1G at the production zstd
-level 3; the nvidia-gaming overage is tracked in #684. The opt-in review VM
-matrix sets `UTAH_ISO_COMPRESSION_LEVEL=15` only to reach install/boot checks;
-local `just iso` and production callers retain level 3 and the 6 GiB guard.
+level 3; the nvidia-gaming overage (98.8 MiB over) is #684. The opt-in review
+VM matrix sets `UTAH_ISO_COMPRESSION_LEVEL=15` only to reach install/boot
+checks; local `just iso` and production callers retain level 3 and the 6 GiB
+guard. The guard and the compression level are policy: do not move either
+without a measured package or layer reduction first.
+
+When the guard trips, measure before trimming. The kernel cache image's last
+layer is only `/utah-cache`, so its archives can be inventoried without a
+build: fetch that one blob from GHCR and `tar -tvf` the archives inside it.
+That is how #684 was located: `ogc.tar` carried a 286 MiB
+`/usr/src/linux-<ogc>` external-module build tree (228 MiB of it `arch/x86`
+built objects and boot images) that gaming images unpacked and never removed.
+To estimate the ISO effect, compress the candidate files in independent
+128 KiB blocks with zstd level 3 -- `mksquashfs -b 131072 -comp zstd
+-Xcompression-level 3` is what the ISO does -- rather than streaming them;
+the tree came out at about 150 MiB that way, against the 98.8 MiB overage.
+The remaining measured candidate is the unstripped NVIDIA modules: 200 MiB
+across both kernels, of which about 26 MiB compressed is `.debug_*` sections
+that `strip --strip-debug` (what `INSTALL_MOD_STRIP=1` runs) would remove,
+at the cost of a kernel cache rebuild because `install-nvidia.sh` is in the
+cache tag.
 
 ### Tacklebox image pin
 

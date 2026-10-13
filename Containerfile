@@ -321,7 +321,10 @@ RUN --mount=type=bind,from=common,source=/system_files/bluefin/usr/share/pixmaps
 # NVIDIA path can bind its module to the exact kernel tree it will boot.
 # v4l2loopback comes last, after the NVIDIA installer, which may remove modules
 # it takes for an earlier driver's: the base module staged by the builder stage
-# is registered and asserted, and the gaming flavors compile one for OGC.
+# is registered and asserted, and the gaming flavors compile one for OGC. Being
+# last also makes the OGC v4l2loopback run the point where the OGC build tree
+# under /usr/src is retired: install-v4l2loopback removes it once its module is
+# verified, in this same layer, so the ~286 MiB tree never ships (#684).
 RUN --mount=type=bind,from=packages,source=/repository,target=/etc/utah-packages,ro \
     case "${IMAGE_FLAVOR}" in \
       gaming|nvidia-gaming) /usr/local/libexec/utah-install-ogc-kernel ;; \

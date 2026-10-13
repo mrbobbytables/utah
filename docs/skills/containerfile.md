@@ -197,7 +197,17 @@ layer is added. The builder never runs `depmod` against `/out`: a partial
 runs again in the flavor step, finds the staged module, and only registers and
 asserts it; `utah-install-v4l2loopback ogc` compiles against the OGC tree that
 `install-ogc-kernel.sh` preserves, which needs `CONFIG_VIDEO_DEV` in that
-kernel (enforced by its `required_config`).
+kernel (enforced by its `required_config`). That `ogc` run is the tree's last
+consumer, so once its module is verified it removes `/usr/src/linux-<ogc>` and
+the `modules/<ogc>/build` symlink (#684). The tree is 286 MiB uncompressed --
+`cp -a arch/x86` carries the built objects and boot images -- and cost about
+150 MiB of the live ISO's zstd-3 squashfs on every gaming flavor. The removal
+lives in `install-v4l2loopback.sh` and not in `install-ogc-kernel.sh` for two
+reasons: that script is in the kernel cache tag, and the cache tarball still
+has to carry the tree for the NVIDIA and v4l2loopback compiles; and it lands
+in the same RUN layer that unpacked the tree, where a deletion actually
+shrinks the layer. A later layer's whiteout only helps after chunkah
+rechunks, and a local `just iso` embeds the un-rechunked layers as they are.
 
 After the final NVIDIA, OGC, and v4l2loopback package steps, the flavor layer
 runs `utah-regenerate-initramfs`. The helper selects the exact bootc kernel,
