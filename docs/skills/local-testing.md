@@ -1,7 +1,7 @@
 ---
 name: local-testing
 version: "1.0"
-last_updated: "2026-10-11"
+last_updated: "2026-10-13"
 id: local-testing
 one_line_purpose: Build, install, and boot Utah locally in a VM or live ISO.
 entry_point: docs/skills/local-testing.md
@@ -416,6 +416,18 @@ A BLS `/ostree/...` path is partition-relative, not relative to the guest's
 Missing directives, missing files, and an empty entry set fail the phase.
 The staged phase checks only already published entries: the pending deployment's
 entry/files are published during shutdown finalization and checked after reboot.
+
+Phases 1 and 3 also run `iso/scripts/verify-selinux-store.sh` as root in the
+guest (#551; evidence in `selinux-<mode>-<phase>.txt`). `probe` says whether
+the policy store is under writable `/etc/selinux` (`persistent`) or read-only
+`/usr` (`immutable`). A `persistent` baseline gets four sample changes in
+Phase 1 (`setsebool -P`, `semanage fcontext`, `semanage port`, a one-type CIL
+module); Phase 3 verifies them after the reboot, plus `semodule -l`, every
+type and module of the pristine `/usr/etc/selinux/targeted` policy in the
+running policy, `/var/home` as `home_root_t`, and `Enforcing`. An `immutable`
+baseline applies them in Phase 3 instead (installed before the change, gains
+it by updating). Phase 3 ends with `remove`; the candidate must probe
+`persistent`. Rollback is out of scope. Mechanism: `containerfile.md`.
 This file gate complements deployment-to-entry matching (issue #361 / PR #571);
 it does not itself prove which deployment an entry represents. Fixture tests
 run the same guest checker via `python3 -m unittest discover -s tests -p test_boot_files.py`.
