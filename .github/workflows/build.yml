@@ -21,6 +21,12 @@ on:
         description: Test an offline ISO for every configured flavor (requires review_vm and contract_only)
         type: boolean
         default: false
+      # The review matrix normally uses test-only zstd 15 to fit all flavors.
+      # Allow an explicit production level to measure the budget (#684).
+      review_iso_compression_level:
+        description: zstd level for the review ISO (15 = test-only; 3 = production budget)
+        type: string
+        default: '15'
       contract_only:
         description: Run contract checks and skip image publication
         type: boolean
@@ -372,15 +378,27 @@ jobs:
         env:
           UTAH_ISO_WORKDIR: ${{ runner.temp }}
           # Test-only compression keeps every flavor under the ISO ceiling so
-          # this opt-in matrix can reach the install and boot checks. Production
-          # callers retain the builder's default compression level.
-          UTAH_ISO_COMPRESSION_LEVEL: "15"
+          # this opt-in matrix can reach the install/boot checks. Production
+          # callers retain the builder's default compression level; dispatch
+          # with review_iso_compression_level=3 to measure against it.
+          UTAH_ISO_COMPRESSION_LEVEL: ${{ inputs.review_iso_compression_level || '15' }}
         run: |
           set -euo pipefail
           image_ref=$(cat evidence/image-ref.txt)
           image_name=$(python3 scripts/flavors.py image "$REVIEW_FLAVOR")
+          rc=0
           bash iso/scripts/build-iso.sh "localhost/${image_name}:testing" "$PWD/output/utah-review.iso" \
-            "Utah Review $REVIEW_FLAVOR" 1 "$image_ref" 2>&1 | tee evidence/iso-build.log
+            "Utah Review $REVIEW_FLAVOR" 1 "$image_ref" 2>&1 | tee evidence/iso-build.log || rc=$?
+          # Record the size before honoring the budget guard so diagnostics
+          # still answer how far above/below budget the image landed.
+          if [ -f output/utah-review.iso ]; then
+            jq -n --arg flavor "$REVIEW_FLAVOR" --arg level "$UTAH_ISO_COMPRESSION_LEVEL" \
+              --argjson bytes "$(du -b output/utah-review.iso | cut -f1)" \
+              '{flavor:$flavor,compression_level:($level|tonumber),iso_bytes:$bytes,iso_mib:($bytes/1048576|floor)}' \
+              > evidence/iso-size.json
+            cat evidence/iso-size.json
+          fi
+          [ "$rc" -eq 0 ] || exit "$rc"
           sha256sum output/utah-review.iso > evidence/iso.sha256
       - name: Boot live desktop, install LUKS, log in and test review fixes
         env:

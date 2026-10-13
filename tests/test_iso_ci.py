@@ -607,6 +607,34 @@ class ForkPullRequestKernelCacheTests(unittest.TestCase):
         hit = step["run"].index("Cache hit")
         self.assertIn("available=true", step["run"][hit:hit + 200])
 
+class ReviewIsoBudgetMeasurementTests(unittest.TestCase):
+    """The review ISO can measure against the production size ceiling."""
+
+    def setUp(self):
+        import yaml
+        build = yaml.safe_load((ROOT / ".github/workflows/build.yml").read_text())
+        self.inputs = build[True]["workflow_dispatch"]["inputs"]
+        self.step = next(
+            step for step in build["jobs"]["review_vm"]["steps"]
+            if step.get("name", "").startswith("Compose offline debug ISO")
+        )
+
+    def test_default_keeps_the_test_only_compression_level(self):
+        self.assertEqual(self.inputs["review_iso_compression_level"]["default"], "15")
+        self.assertEqual(
+            self.step["env"]["UTAH_ISO_COMPRESSION_LEVEL"],
+            "${{ inputs.review_iso_compression_level || '15' }}",
+        )
+
+    def test_size_is_saved_even_when_budget_guard_fails(self):
+        run = self.step["run"]
+        record = run.index("evidence/iso-size.json")
+        guard = run.index('[ "$rc" -eq 0 ] || exit "$rc"')
+        self.assertLess(record, guard)
+        self.assertIn("compression_level", run)
+        self.assertIn("iso_bytes", run)
+
+
 class ConcurrencyTests(unittest.TestCase):
     """A testing build must not be cancelled by the next one.
 

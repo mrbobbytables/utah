@@ -1,7 +1,7 @@
 ---
 name: ci-workflows
 version: "1.1"
-last_updated: "2026-10-12"
+last_updated: "2026-10-13"
 id: ci-workflows
 one_line_purpose: Navigate Utah's build, promote, and sync workflow topology.
 entry_point: docs/skills/ci-workflows.md
@@ -32,8 +32,11 @@ post-build verification workflows, not the complete workflow inventory:
   `review_vm=true` as well to build a disposable image on the runner, compose
   and boot an offline ISO, and retain test evidence; `review_iso_all_flavors`
   expands that job from main flavors to every flavor in `config/flavors.json`.
-  This path has read-only registry access and never publishes or signs the
-  review image. For kernel-cache consumers, first build the matching signed
+  The review ISO defaults to zstd level 15 so all flavors fit for VM testing.
+  Set `review_iso_compression_level=3` to measure the production ISO budget;
+  `evidence/iso-size.json` records the image size even when the 6 GiB guard
+  fails. This path has read-only registry access and never publishes or signs
+  the review image. For kernel-cache consumers, first build the matching signed
   cache through the normal pipeline.
 - `.github/workflows/promote-testing-to-main.yml` -- pushes to `testing`, a
   nightly cron, and manual dispatch.
