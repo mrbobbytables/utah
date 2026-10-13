@@ -45,6 +45,10 @@ class RelocateStoreTests(unittest.TestCase):
         (self.old / "targeted/active/modules/100/abrt").mkdir(parents=True)
         (self.old / "targeted/active/modules/100/abrt/cil").write_bytes(b"cil")
         (self.old / "targeted/active/commit_num").write_text("1\n")
+        # libsemanage's store locks, taken by the package transaction that
+        # runs before the relocation (CI run 38405812025).
+        (self.old / "targeted/semanage.read.LOCK").touch()
+        (self.old / "targeted/semanage.trans.LOCK").touch()
         (self.old / "final/targeted/contexts/files").mkdir(parents=True)
         (self.old / "final/targeted/contexts/files/file_contexts").write_text("x\n")
         (self.new / "targeted/policy").mkdir(parents=True)
@@ -64,6 +68,8 @@ class RelocateStoreTests(unittest.TestCase):
         self.assertTrue((self.new / "targeted/active/modules/100/abrt/cil").is_file())
         self.assertTrue((self.new / "targeted/active/commit_num").is_file())
         self.assertTrue((self.new / "final/targeted/contexts/files/file_contexts").is_file())
+        self.assertTrue((self.new / "targeted/semanage.read.LOCK").is_file())
+        self.assertTrue((self.new / "targeted/semanage.trans.LOCK").is_file())
         self.assertFalse(self.old.exists(), "/usr/lib/selinux must not linger")
         lines = self.conf.read_text().splitlines()
         self.assertIn(NEW_LINE, lines)
@@ -74,6 +80,24 @@ class RelocateStoreTests(unittest.TestCase):
         )
         # The compiled policy the kernel loads was already under /etc.
         self.assertEqual((self.new / "targeted/policy/policy.35").read_bytes(), b"compiled")
+
+    def test_store_without_lock_files_still_relocates(self):
+        """A base that never took the store lock leaves no LOCK files behind."""
+        self.hummingbird_layout()
+        (self.old / "targeted/semanage.read.LOCK").unlink()
+        (self.old / "targeted/semanage.trans.LOCK").unlink()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.old.exists())
+        self.assertFalse((self.new / "targeted/semanage.read.LOCK").exists())
+
+    def test_existing_lock_in_etc_wins_over_an_empty_old_one(self):
+        self.hummingbird_layout()
+        (self.new / "targeted/semanage.read.LOCK").touch()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.old.exists())
+        self.assertTrue((self.new / "targeted/semanage.read.LOCK").is_file())
 
     def test_second_run_is_a_no_op(self):
         self.hummingbird_layout()

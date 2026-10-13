@@ -71,9 +71,27 @@ if [[ -d "${old_store}/final" ]]; then
     rm -rf "${new_store}/final"
     mv "${old_store}/final" "${new_store}/final"
 fi
+# libsemanage keeps its store locks at <store-root>/<type>/semanage.*.LOCK
+# and (re)creates them empty on first use. The package transaction that
+# precedes this script takes them, so they are present in the build and
+# belong with the store.
+for lock in semanage.read.LOCK semanage.trans.LOCK; do
+    old_lock="${old_store}/targeted/${lock}"
+    new_lock="${new_store}/targeted/${lock}"
+    [[ -f "$old_lock" ]] || continue
+    if [[ ! -e "$new_lock" ]]; then
+        mv "$old_lock" "$new_lock"
+    elif [[ ! -s "$old_lock" ]]; then
+        rm -f "$old_lock"
+    else
+        echo "ERROR: ${old_lock} is not an empty lock file and ${new_lock} already exists" >&2
+        exit 1
+    fi
+done
 
-# Only the two entries Hummingbird moved may be left behind; anything else
-# means the base changed under us and would be lost silently by an rm -rf.
+# Only the entries Hummingbird moved and libsemanage's locks may be left
+# behind; anything else means the base changed under us and would be lost
+# silently by an rm -rf.
 rmdir "${old_store}/targeted" 2>/dev/null || true
 leftovers=$(find "$old_store" -mindepth 1 -print 2>/dev/null | head -n 5 || true)
 if [[ -n "$leftovers" ]]; then
