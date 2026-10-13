@@ -344,8 +344,23 @@ RUN --mount=type=bind,from=packages,source=/repository,target=/etc/utah-packages
     # the committed image. Flip it disabled here -- the last step that installs
     # anything -- so later dnf calls on the image (the live ISO build's included)
     # do not fail on a file:// baseurl that no longer exists.
-    sed -i 's/^enabled=1$/enabled=0/' /etc/yum.repos.d/utah-packages.repo \
-      && grep -q '^enabled=0$' /etc/yum.repos.d/utah-packages.repo && \
+    #
+    # The flip must change the file's size, not only its bytes (#735). The
+    # pin below stamps the rewritten file with the same epoch the earlier
+    # layer's copy already carries, and `enabled=1` -> `enabled=0` keeps the
+    # length. containers/storage's naive layer diff -- what buildah uses on
+    # kernels with CONFIG_OVERLAY_FS_REDIRECT_DIR, the hosted runners among
+    # them -- decides "modified" from mode, owner, mtime and size alone, never
+    # content. Equal on all four, the flipped file was dropped from the layer
+    # and the published image shipped enabled=1 with a dangling baseurl, and
+    # every dnf call on it failed. Appending the comment adds bytes, so the
+    # diff cannot miss it; the second grep proves the bytes were added.
+    sed -i \
+      -e 's/^enabled=1$/enabled=0/' \
+      -e '/^enabled=0$/a # Disabled by the image build: the baseurl above is mounted only while the image is built.' \
+      /etc/yum.repos.d/utah-packages.repo \
+      && grep -q '^enabled=0$' /etc/yum.repos.d/utah-packages.repo \
+      && grep -q '^# Disabled by the image build:' /etc/yum.repos.d/utah-packages.repo && \
     /usr/local/libexec/utah-pin-build-mtimes
 
 # Everything above writes build-time residue that bootc lint rejects: dnf logs
