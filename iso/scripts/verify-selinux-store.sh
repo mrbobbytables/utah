@@ -16,6 +16,9 @@
 #            is enforcing, home directories keep their labels, and every
 #            type and module of the image's own policy is part of the
 #            running policy (a local change must not hold the policy back).
+#   reject   offer semodule a module it must refuse (invalid CIL); the install
+#            must fail and leave the store, the running policy and the local
+#            changes exactly as they were, so the machine stays bootable.
 #   remove   undo the four changes and confirm none is left in effect.
 #
 # The three paths can be overridden for host-side fixture tests; nothing on
@@ -35,6 +38,7 @@ PORT=18081
 PORT_TYPE=http_port_t
 MODULE=utah_e2e
 MODULE_TYPE=utah_e2e_t
+BAD_MODULE=utah_e2e_bad
 
 fail() {
     echo "FAIL: $*" >&2
@@ -192,8 +196,32 @@ case "$mode" in
         require_enforcing
         echo "PASS: local SELinux changes removed"
         ;;
+    reject)
+        store_is_persistent || fail "store-root in ${SEMANAGE_CONF} is not /etc/selinux"
+        require_enforcing
+        module_dir=$(mktemp -d)
+        printf '(type %s\n(this is not valid CIL\n' "$BAD_MODULE" > "${module_dir}/${BAD_MODULE}.cil"
+        echo "+ semodule -i ${module_dir}/${BAD_MODULE}.cil (must be rejected)"
+        if semodule -i "${module_dir}/${BAD_MODULE}.cil"; then
+            rm -rf "$module_dir"
+            fail "semodule accepted the invalid module ${BAD_MODULE}"
+        fi
+        rm -rf "$module_dir"
+        run semodule -l >/dev/null
+        ! grep -qx "$BAD_MODULE" <<<"$(semodule -l)" || fail "rejected module ${BAD_MODULE} is listed"
+        if [[ -n "$(find /etc/selinux/targeted/active -name "${BAD_MODULE}*" 2>/dev/null)" ]]; then
+            fail "rejected module ${BAD_MODULE} left files in the store"
+        fi
+        boolean_is on || fail "${BOOLEAN} changed after the rejected module"
+        module_listed || fail "module ${MODULE} vanished after the rejected module"
+        type_in_running_policy || fail "${MODULE_TYPE} left the running policy after the rejected module"
+        require_image_policy
+        require_home_labels
+        require_enforcing
+        echo "PASS: invalid local module rejected; store, policy and labels unchanged"
+        ;;
     *)
-        echo "Usage: $0 probe|apply|verify|remove" >&2
+        echo "Usage: $0 probe|apply|verify|reject|remove" >&2
         exit 2
         ;;
 esac

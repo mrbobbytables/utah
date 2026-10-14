@@ -169,7 +169,7 @@ verify_boot_files() {
 # Persistent SELinux changes (#551): the candidate must keep its policy store
 # under writable /etc/selinux, and ostree's policy rebuild in the new
 # deployment must carry local changes forward while the image's own policy
-# still takes effect. Modes: probe, apply, verify, remove; stdout and stderr
+# still takes effect. Modes: probe, apply, verify, reject, remove; stdout and stderr
 # land in evidence/selinux-<mode>-<phase>.txt. Returns the checker's status.
 selinux_check() {
     local phase="$1" mode="$2" checker
@@ -740,6 +740,11 @@ else
         || diagnose_failure "Persistent SELinux changes failed on the upgraded deployment; see selinux-apply-upgraded.txt"
     echo "  [Phase 3] SELinux: persistent changes work on the upgraded deployment"
 fi
+# A module the policy compiler refuses must leave the store, the running
+# policy, the local changes and the labels untouched.
+selinux_check upgraded reject \
+    || diagnose_failure "A rejected local SELinux module changed the policy state on the upgraded deployment; see selinux-reject-upgraded.txt"
+echo "  [Phase 3] SELinux: invalid local module rejected without disturbing the policy"
 selinux_check upgraded remove \
     || diagnose_failure "Removing the local SELinux changes failed on the upgraded deployment; see selinux-remove-upgraded.txt"
 

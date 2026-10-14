@@ -220,6 +220,15 @@ class GuestCheckerTests(unittest.TestCase):
         self.assertIn("home_root_t", text)
         self.assertIn("Enforcing", text)
 
+    def test_reject_mode_requires_a_refused_module_and_unchanged_state(self):
+        text = CHECKER.read_text()
+        self.assertIn("semodule accepted the invalid module", text)
+        self.assertIn("require_image_policy", text[text.index("    reject)"):text.index("    *)")])
+        self.conf.write_text(CONF_HEAD + OLD_LINE + "\n")
+        result = self.run_checker("reject")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("store-root", result.stderr)
+
     def test_no_quiet_grep_at_the_end_of_a_pipeline(self):
         """`grep -q` closing a pipe early trips pipefail on the producer."""
         for line in CHECKER.read_text().splitlines():
@@ -235,12 +244,14 @@ class LifecycleHarnessTests(unittest.TestCase):
         stage = text.index('ACTIVE_PHASE="staged"')
         upgraded_verify = text.index("selinux_check upgraded verify")
         upgraded_apply = text.index("selinux_check upgraded apply")
+        upgraded_reject = text.index("selinux_check upgraded reject")
         upgraded_remove = text.index("selinux_check upgraded remove")
         rollback = text.index('ACTIVE_PHASE="rollback"')
         self.assertLess(baseline_apply, stage)
         self.assertLess(stage, upgraded_verify)
         self.assertLess(upgraded_verify, upgraded_apply)
-        self.assertLess(upgraded_apply, upgraded_remove)
+        self.assertLess(upgraded_apply, upgraded_reject)
+        self.assertLess(upgraded_reject, upgraded_remove)
         self.assertLess(upgraded_remove, rollback)
 
     def test_upgraded_deployment_must_have_a_writable_store(self):
